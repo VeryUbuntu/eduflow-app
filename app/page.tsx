@@ -5,7 +5,7 @@ import { UserSetup } from "@/components/UserSetup";
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { Loader2, Plus, RefreshCcw, Pencil, Target } from "lucide-react";
+import { Loader2, Plus, RefreshCcw, Pencil, Target, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -73,9 +73,12 @@ const SUBJECT_COLORS: Record<string, string> = {
   "通用": "bg-gray-100 border-gray-200 text-gray-900",
 };
 
+import Latex from "react-latex-next";
+import "katex/dist/katex.min.css";
+
 // --- Components ---
 
-function SortableCard({ card, onRefresh }: { card: CardData, onRefresh: (subject: string) => void }) {
+function SortableCard({ card, onRefresh, onExplain }: { card: CardData, onRefresh: (subject: string) => void, onExplain: (card: CardData) => void }) {
   const {
     attributes,
     listeners,
@@ -84,6 +87,8 @@ function SortableCard({ card, onRefresh }: { card: CardData, onRefresh: (subject
     transition,
     isDragging
   } = useSortable({ id: card.id });
+
+  const [isSpinning, setIsSpinning] = useState(false);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -94,46 +99,71 @@ function SortableCard({ card, onRefresh }: { card: CardData, onRefresh: (subject
 
   const colorClass = SUBJECT_COLORS[card.subject] || SUBJECT_COLORS["通用"];
 
+  const handleRefreshClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsSpinning(true);
+    onRefresh(card.subject);
+    // Stop spinning after 3 seconds timeout as safeguard, 
+    // or ideally the parent re-renders and this component is remounted/updated.
+    setTimeout(() => setIsSpinning(false), 3000);
+  };
+
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="w-full h-full">
       <div className={cn(
-        "h-full min-h-[320px] rounded-2xl p-6 shadow-sm hover:shadow-xl border flex flex-col gap-4 bg-white transition-all duration-300 group relative select-none",
+        "h-full min-h-[200px] rounded-xl p-5 shadow-sm hover:shadow-md border flex flex-col gap-3 bg-white transition-all duration-200 group relative select-none",
         colorClass.split(" ")[1],
       )}>
-        {/* Refresh Button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute top-4 right-4 opacity-20 group-hover:opacity-100 transition-opacity duration-200 hover:bg-slate-100 z-10"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onRefresh(card.subject); }}
-          title="刷新此卡片"
-        >
-          <RefreshCcw size={14} className="text-slate-500" />
-        </Button>
+        {/* Actions: Refresh & Explain */}
+        <div className="absolute top-4 right-4 flex gap-1 z-10 opacity-30 group-hover:opacity-100 transition-opacity duration-200">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hover:bg-slate-100 h-8 w-8"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onExplain(card); }}
+            title="AI 详解"
+          >
+            <BookOpen size={14} className="text-slate-500" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hover:bg-slate-100 h-8 w-8"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={handleRefreshClick}
+            title="刷新此卡片"
+          >
+            <RefreshCcw size={14} className={cn("text-slate-500", isSpinning && "animate-spin")} />
+          </Button>
+        </div>
 
         {/* Header */}
-        <div className="flex justify-between items-center pr-10 border-b border-dashed border-slate-200 pb-3">
-          <Badge variant="outline" className={cn("bg-white border-none font-bold text-sm px-3 py-1 shadow-sm", colorClass.split(" ")[2])}>
+        <div className="flex justify-between items-center pr-20 border-b border-dashed border-slate-100 pb-2">
+          <Badge variant="outline" className={cn("bg-white border-none font-bold text-xs px-2.5 py-0.5 shadow-sm", colorClass.split(" ")[2])}>
             {card.subject}
           </Badge>
-          <span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-2 py-0.5 rounded">{card.date}</span>
+          <span className="text-[10px] text-slate-400 font-mono">{card.date}</span>
         </div>
 
         {/* Content */}
         <div className="flex-1 flex flex-col justify-center items-start text-left py-4 px-1 cursor-grab active:cursor-grabbing">
-          <h3 className="text-lg font-bold text-slate-900 mb-3 leading-snug w-full">
-            {(() => {
-              const parts = card.content.split(/[:：]/);
-              return parts.length > 0 ? parts[0] : "";
-            })()}
+          <h3 className="text-lg font-semibold text-slate-900 mb-3 leading-snug w-full">
+            <Latex>
+              {(() => {
+                const parts = card.content.split(/[:：]/);
+                return parts.length > 0 ? parts[0] : "";
+              })()}
+            </Latex>
           </h3>
-          <p className="text-base text-slate-700 leading-7 font-normal w-full tracking-wide">
-            {(() => {
-              const parts = card.content.split(/[:：]/);
-              return parts.length > 1 ? parts.slice(1).join("：") : card.content;
-            })()}
-          </p>
+          <div className="text-base text-slate-600 leading-[1.75] font-normal w-full tracking-wide whitespace-pre-line">
+            <Latex>
+              {(() => {
+                const parts = card.content.split(/[:：]/);
+                return parts.length > 1 ? parts.slice(1).join("：") : card.content;
+              })()}
+            </Latex>
+          </div>
         </div>
 
         {/* Footer Decor */}
@@ -160,6 +190,12 @@ export default function Home() {
   const [dailyCards, setDailyCards] = useState<CardData[]>([]);
   const [cardLoading, setCardLoading] = useState(false);
 
+  // Explain State
+  const [explainDialogOpen, setExplainDialogOpen] = useState(false);
+  const [explainContent, setExplainContent] = useState("");
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [currentExplainingCard, setCurrentExplainingCard] = useState<CardData | null>(null);
+
   // Goal State
   const [userGoal, setUserGoal] = useState<UserGoal | null>(null);
   const [isGoalDialogOpen, setIsGoalDialogOpen] = useState(false);
@@ -176,6 +212,33 @@ export default function Home() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  const handleExplain = async (card: CardData) => {
+    if (!currentUser) return;
+    setCurrentExplainingCard(card);
+    setExplainContent("");
+    setIsExplaining(true);
+    setExplainDialogOpen(true);
+
+    try {
+      const res = await fetch("/api/explain-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: card.content,
+          subject: card.subject,
+          user_id: currentUser.id
+        })
+      });
+      const data = await res.json();
+      setExplainContent(data.explanation);
+    } catch (e) {
+      console.error(e);
+      setExplainContent("抱歉，获取详解失败，请稍后再试。");
+    } finally {
+      setIsExplaining(false);
+    }
+  };
 
   // Initial Fetch
   const fetchUsers = async () => {
@@ -297,12 +360,16 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] flex flex-col md:flex-row text-slate-800">
+    <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row text-slate-800 font-sans antialiased">
       {/* Sidebar */}
       <aside className="w-full md:w-64 bg-white border-r border-gray-200 z-20 flex flex-col gap-6 shadow-sm flex-none">
-        <div className="p-6 border-b">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">EduFlow</h1>
-          <p className="text-xs text-slate-500 mt-1">家庭版</p>
+        <div className="p-6 border-b flex items-center gap-2">
+          <div className="bg-cyan-600 p-1.5 rounded-lg text-white">
+            <BookOpen size={20} strokeWidth={3} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 leading-none">EduFlow</h1>
+          </div>
         </div>
 
         <div className="flex-1 px-4 space-y-2 overflow-y-auto">
@@ -312,18 +379,20 @@ export default function Home() {
               key={u.id}
               onClick={() => handleSwitchUser(u)}
               className={cn(
-                "w-full text-left px-4 py-3 rounded-lg transition-all flex flex-col relative overflow-hidden group",
-                currentUser?.id === u.id ? "bg-cyan-600 text-white shadow-md" : "hover:bg-slate-100 text-slate-700"
+                "w-full text-left px-4 py-3 transition-all flex flex-col relative overflow-hidden group border-l-4",
+                currentUser?.id === u.id
+                  ? "bg-cyan-50 border-cyan-600 text-cyan-700"
+                  : "border-transparent hover:bg-slate-50 text-slate-700"
               )}
             >
-              <span className="font-bold text-lg relative z-10">{u.name}</span>
-              <span className={cn("text-xs relative z-10", currentUser?.id === u.id ? "text-cyan-100" : "text-slate-500")}>
+              <span className={cn("text-lg relative z-10", currentUser?.id === u.id ? "font-bold" : "font-semibold")}>{u.name}</span>
+              <span className={cn("text-xs relative z-10", currentUser?.id === u.id ? "text-cyan-600/80" : "text-slate-400")}>
                 {u.grade} | {u.phase}
               </span>
             </button>
           ))}
-          <Button variant="outline" className="w-full justify-start gap-2 mt-4 border-dashed" onClick={() => setShowSetup(true)}>
-            <Plus size={16} /> 添加成员
+          <Button variant="ghost" className="w-full justify-start gap-2 mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 font-medium" onClick={() => setShowSetup(true)}>
+            <div className="bg-slate-200 rounded-full p-0.5"><Plus size={14} /></div> 添加家庭成员
           </Button>
         </div>
 
@@ -342,97 +411,115 @@ export default function Home() {
         }}
       >
         <header className="flex-none px-6 py-6 md:px-8 border-b z-30 shadow-sm bg-white">
-          <div className="flex flex-col gap-6">
-            {/* Top Row: Date, Title, Goal */}
-            <div className="flex justify-between items-start md:items-end">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-baseline gap-3">
-                  <h1 className="text-4xl font-bold tracking-tight text-cyan-600">
-                    {format(new Date(), "dd")}
-                  </h1>
-                  <span className="text-xl text-slate-500 font-medium">
-                    {format(new Date(), "MM月 yyyy")}
-                  </span>
-                  <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-wider">
-                    {format(new Date(), "EEEE", { locale: zhCN })}
-                  </span>
+          <div className="flex flex-row justify-between items-center gap-8">
+            {/* Left Column: Date & Month Strip */}
+            <div className="flex flex-col gap-6 flex-1 min-w-0">
+              {/* Date Block */}
+              <div className="flex items-baseline gap-3">
+                <h1 className="text-4xl font-bold tracking-tight text-cyan-600">
+                  {format(new Date(), "dd")}
+                </h1>
+                <span className="text-xl text-slate-500 font-medium">
+                  {format(new Date(), "MM月 yyyy")}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-wider">
+                  {format(new Date(), "EEEE", { locale: zhCN })}
+                </span>
+              </div>
+
+              {/* Month Days Strip (Refined Small & Light) */}
+              <div className="w-fit relative max-w-full">
+                <div
+                  className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-hide border-b-[2px] border-cyan-500/40 px-4 -mx-4"
+                  style={{ maskImage: "linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent)" }}
+                >
+                  {(() => {
+                    const today = new Date();
+                    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                    const currentDay = today.getDate();
+                    const days = [];
+
+                    for (let d = currentDay; d <= daysInMonth; d++) {
+                      days.push(d);
+                    }
+
+                    return days.map((d) => {
+                      const isToday = d === currentDay;
+                      const dateObj = new Date(today.getFullYear(), today.getMonth(), d);
+                      const dayOfWeek = dateObj.getDay();
+                      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+                      return (
+                        <div
+                          key={d}
+                          className={cn(
+                            "flex flex-col items-center justify-center min-w-[34px] h-[46px] rounded-lg transition-all cursor-default select-none relative flex-shrink-0",
+                            isToday
+                              ? "bg-cyan-600 text-white shadow-sm scale-105"
+                              : "bg-transparent hover:bg-slate-50 text-slate-500"
+                          )}
+                        >
+                          <span className={cn(
+                            "text-[8px] font-medium mb-0.5 uppercase tracking-wider",
+                            isToday ? "text-cyan-100" : isWeekend ? "text-red-300" : "text-slate-300"
+                          )}>
+                            {format(dateObj, "EEE", { locale: zhCN })}
+                          </span>
+                          <span className={cn(
+                            "text-lg font-light leading-none",
+                            isToday ? "text-white font-normal" : "text-slate-600"
+                          )}>
+                            {d}
+                          </span>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
-
-              {/* Goal Countdown Section */}
-              <div className="flex items-center gap-4">
-                {userGoal ? (
-                  <div className="flex items-center gap-3 bg-cyan-50 px-4 py-2 rounded-xl border border-cyan-100">
-                    <div className="flex flex-col items-end">
-                      <span className="text-xs text-cyan-500 font-medium">{userGoal.description}</span>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-cyan-600 text-xs">还剩</span>
-                        <span className="text-2xl font-bold text-cyan-700 leading-none">
-                          {differenceInCalendarDays(new Date(userGoal.target_date), new Date())}
-                        </span>
-                        <span className="text-cyan-600 text-xs">天</span>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-cyan-300 hover:text-cyan-600 hover:bg-cyan-100" onClick={() => setIsGoalDialogOpen(true)}>
-                      <Pencil size={12} />
-                    </Button>
-                  </div>
-                ) : (
-                  <Button variant="outline" size="sm" className="gap-2 text-slate-500" onClick={() => setIsGoalDialogOpen(true)}>
-                    <Target size={14} /> 设置目标
-                  </Button>
-                )}
-              </div>
             </div>
 
-            {/* Bottom Row: Month Days Strip (Refined) */}
-            <div className="w-fit">
-              <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-hide border-b-[2px] border-cyan-500/50">
-                {(() => {
-                  const today = new Date();
-                  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-                  const currentDay = today.getDate();
-                  const days = [];
+            {/* Right Column: Goal Countdown Section (Vertically Centered) */}
+            <div className="flex items-center flex-none">
+              {userGoal ? (
+                <div
+                  className="flex items-center gap-4 bg-white border border-slate-100 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.05)] rounded-2xl px-5 py-3 hover:border-cyan-200 hover:shadow-cyan-50 transition-all cursor-pointer group select-none"
+                  onClick={() => setIsGoalDialogOpen(true)}
+                >
+                  {/* Icon */}
+                  <div className="w-10 h-10 rounded-full bg-cyan-50 text-cyan-600 flex items-center justify-center group-hover:bg-cyan-100 group-hover:scale-110 transition-all duration-300">
+                    <Target size={20} className="stroke-[2.5px]" />
+                  </div>
 
-                  for (let d = currentDay; d <= daysInMonth; d++) {
-                    days.push(d);
-                  }
-
-                  return days.map((d) => {
-                    const isToday = d === currentDay;
-                    const dateObj = new Date(today.getFullYear(), today.getMonth(), d);
-                    const dayOfWeek = dateObj.getDay(); // 0 is Sunday, 6 is Saturday
-                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-
-                    return (
-                      <div
-                        key={d}
-                        className={cn(
-                          "flex flex-col items-center justify-center min-w-[34px] h-[50px] rounded-md transition-all cursor-default select-none relative",
-                          isToday
-                            ? "border border-cyan-500 text-cyan-700"
-                            : "bg-transparent hover:bg-slate-50"
-                        )}
-                      >
-                        <span className={cn(
-                          "text-[9px] font-light mb-0.5",
-                          isToday ? "text-cyan-600/80" : isWeekend ? "text-red-400" : "text-slate-400"
-                        )}>
-                          {format(dateObj, "E", { locale: zhCN })}
-                        </span>
-                        <span className={cn(
-                          "text-sm font-normal leading-none tracking-tight",
-                          isToday ? "text-cyan-700 font-bold" : isWeekend ? "text-red-500" : "text-slate-600"
-                        )}>
-                          {d}
-                        </span>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
+                  {/* Info */}
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">当前目标</span>
+                      <span className="text-xs font-bold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded-md">{userGoal.description}</span>
+                    </div>
+                    <div className="flex items-baseline gap-1 mt-0.5">
+                      <span className="text-xs text-slate-400">还剩</span>
+                      <span className="text-xl font-extrabold text-cyan-600 font-mono tracking-tight leading-none">
+                        {differenceInCalendarDays(new Date(userGoal.target_date), new Date())}
+                      </span>
+                      <span className="text-xs text-slate-400">天</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="gap-2 text-slate-500 border-dashed rounded-xl h-12 px-6 hover:border-cyan-400 hover:text-cyan-600"
+                  onClick={() => setIsGoalDialogOpen(true)}
+                >
+                  <Target size={16} />
+                  <span>设定学习目标</span>
+                </Button>
+              )}
             </div>
           </div>
+
+
         </header>
 
         <Dialog open={isGoalDialogOpen} onOpenChange={setIsGoalDialogOpen}>
@@ -464,6 +551,47 @@ export default function Home() {
           </DialogContent>
         </Dialog>
 
+        {/* Explain Dialog */}
+        <Dialog open={explainDialogOpen} onOpenChange={setExplainDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <BookOpen size={20} className="text-cyan-600" />
+                <span>知识详解 - {currentExplainingCard?.subject}</span>
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-6 py-4">
+              {/* Original Content */}
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                <p className="text-sm text-slate-500 mb-2 font-bold">原文知识点：</p>
+                <div className="text-slate-800 font-medium">
+                  <Latex>{currentExplainingCard?.content || ""}</Latex>
+                </div>
+              </div>
+
+              {/* Explanation */}
+              <div className="space-y-2">
+                <p className="text-sm text-slate-500 font-bold">AI 深度解析：</p>
+                {isExplaining ? (
+                  <div className="flex items-center gap-2 text-cyan-600 py-8 justify-center">
+                    <Loader2 className="animate-spin" />
+                    <span>正在生成详细解读与举例...</span>
+                  </div>
+                ) : (
+                  <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
+                    <Latex>{explainContent}</Latex>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button onClick={() => setExplainDialogOpen(false)}>关闭</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6 md:p-8">
           {cardLoading ? (
@@ -481,12 +609,13 @@ export default function Home() {
                 items={dailyCards.map(c => c.id)}
                 strategy={rectSortingStrategy}
               >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-20 max-w-5xl mx-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 pb-20 w-full mx-auto">
                   {dailyCards.map((card) => (
                     <SortableCard
                       key={card.id}
                       card={card}
                       onRefresh={handleRefreshSingleCard}
+                      onExplain={handleExplain}
                     />
                   ))}
                 </div>

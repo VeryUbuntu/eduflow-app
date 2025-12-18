@@ -10,6 +10,9 @@ import random
 import os
 import json
 from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Database Setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///./eduflow.db"
@@ -72,145 +75,92 @@ class KnowledgeService:
         self.client = None
         if self.api_key:
             self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
-    
-    def get_mock_content(self, subject, grade, phase):
-        # Structured Mock Data Separation
-        # Primary = 小学
-        # Secondary = 初中, 高中, 大学
         
-        print(f"DEBUG: Generating content for Phase={phase}, Subject={subject}") # Debug print
-        is_primary = "小学" in str(phase) # Make check more robust
-
-        primary_db = {
-            "数学": [
-                "九九乘法表：熟记 9x9 以内的乘法是计算的基础。",
-                "认识图形：正方形有四条边，四个角都是直角。",
-                "分数的初步认识：把一个苹果平均分成两份，每份是二分之一。",
-                "加减法技巧：凑十法可以让计算更快乐！",
-                "时钟认识：短针是时针，长针是分针。",
-            ],
-            "语文": [
-                "古诗：鹅鹅鹅，曲项向天歌。白毛浮绿水，红掌拨清波。",
-                "拼音：a o e i u ü，声调由于不同，意思也不同。",
-                "成语：【井底之蛙】比喻见识短浅的人。",
-                "词语：高兴、快乐、开心都是表示心情好的词。",
-            ],
-            "英语": [
-                "Greetings：Hello! How are you?",
-                "Colors：Red(红), Blue(蓝), Green(绿).",
-                "Animals：Cat(猫), Dog(狗), Elephant(大象).",
-                "Numbers：One, Two, Three...",
-                "Fruits：Apple, Banana, Orange.",
-            ],
-            "物理": [
-                "自然常识：为什么苹果会往下掉？因为有地球引力。",
-                "光影游戏：影子是因为光被物体挡住了。",
-                "浮力：为什么大船能浮在水面上？",
-            ],
-            "化学": [
-                "生活常识：食盐可以用来调味，也可以用来融雪。",
-                "水的变化：冰化成水，水变成水蒸气。",
-            ],
-            "生物": [
-                "植物生长：植物需要阳光、空气和水才能长大。",
-                "动物常识：青蛙小时候是蝌蚪。",
-                "人体奥秘：我们要刷牙来保护牙齿。",
-            ],
-            "历史": [
-                "传说故事：大禹治水，三过家门而不入。",
-                "古代发明：指南针可以帮我们辨别方向。",
-            ],
-            "地理": [
-                "认识地图：上北下南，左西右东。",
-                "我们的家：地球是一个蓝色的星球。",
-            ]
-        }
-
-        advanced_db = {
-            "数学": [
-                "勾股定理：a² + b² = c²，适用于直角三角形。",
-                "圆的面积：S = πr²，周长 C = 2πr。",
-                "一元二次方程：ax² + bx + c = 0 的判别式 Δ = b² - 4ac。",
-                "正弦定理：a/sinA = b/sinB = c/sinC = 2R。",
-                "概率的基本性质：0 ≤ P(A) ≤ 1。",
-                "函数的单调性：导数大于0，函数单调递增。",
-            ],
-            "物理": [
-                "牛顿第一定律：一切物体在没有受到外力作用的时候，总保持匀速直线运动状态或静止状态。",
-                "密度公式：ρ = m/V (质量/体积)。",
-                "压强公式：P = F/S (压力/受力面积)。",
-                "欧姆定律：I = U/R。",
-                "动能：Ek = 1/2mv²。",
-            ],
-            "语文": [
-                "诗词赏析：李白《静夜思》举头望明月，低头思故乡。",
-                "修辞手法：比喻、拟人、排比、夸张。",
-                "成语：【铁杵磨成针】形容坚持不懈。",
-                "文言文：常用虚词：之、乎、者、也。",
-                "议论文：三要素：论点、论据、论证。",
-            ],
-            "英语": [
-                "Grammar：The passive voice is formed with 'be + past participle'.",
-                "Word of the Day：Ambitious (有雄心的)。",
-                "Clause：This is the book which I bought yesterday.",
-                "Tense：Present Perfect Tense indicates an action happened at an indefinite time in the past.",
-            ],
-            "化学": [
-                "化学式：水的化学式 H₂O。",
-                "氧化反应：物质与氧发生的反应。",
-                "pH值：< 7 为酸性，> 7 为碱性。",
-                "原子结构：原子由质子、中子和电子构成。",
-                "元素周期表：第1号元素是氢(H)。",
-            ],
-            "生物": [
-                "光合作用：场所是叶绿体。",
-                "人体器官：最大的器官是皮肤。",
-                "遗传物质：DNA是主要的遗传物质。",
-                "细胞分裂：一个细胞分成两个细胞。",
-                "生态系统：生产者、消费者、分解者。",
-            ],
-            "历史": [
-                "秦统一六国：秦始皇于公元前221年统一六国。",
-                "汉武帝：罢黜百家，独尊儒术。",
-                "工业革命：始于18世纪60年代的英国。",
-                "丝绸之路：促进了东西方文化交流。",
-                "辛亥革命：推翻了清王朝的统治。",
-            ],
-            "地理": [
-                "地球自转：方向是自西向东。",
-                "世界高原：世界最大的高原是巴西高原，最高的高原是青藏高原。",
-                "赤道：周长约4万千米。",
-                "中国地势：西高东低，呈阶梯状分布。",
-                "温室效应：导致全球变暖。",
-            ]
-        }
-        
-        target_db = primary_db if is_primary else advanced_db
-        fallback = [f"探索发现：保持好奇心，继续探索{subject}的奥秘！"]
-        
-        candidates = target_db.get(subject, fallback)
-        content = random.choice(candidates)
-        return content
+        # Load Local Knowledge Base
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            json_path = os.path.join(current_dir, "data", "knowledge_base.json")
+            with open(json_path, "r", encoding="utf-8") as f:
+                self.knowledge_db = json.load(f)
+        except Exception as e:
+            print(f"Failed to load knowledge base: {e}")
+            self.knowledge_db = {"primary": {}, "advanced": {}}
 
     def generate(self, subject: str, grade: str, phase: str):
         if self.client:
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    # model="gpt-3.5-turbo", # Old Model
+                    model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
                     messages=[
-                        {"role": "system", "content": "You are a helpful tutor. Output only the content of a knowledge card."},
-                        {"role": "user", "content": f"Generate a single, interesting, short educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words."}
+                        {"role": "system", "content": "You are a helpful tutor. Output only the content of a knowledge card. Format: 'Concept Name：Concept Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs."},
+                        {"role": "user", "content": f"Generate a single, interesting, short educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题' itself. Ensure ALL math parts like x^2 are wrapped in $...$."}
                     ],
-                    timeout=5
+                    timeout=30
                 )
                 return response.choices[0].message.content
             except Exception as e:
                 print(f"LLM Failed: {e}")
-        return self.get_mock_content(subject, grade, phase)
+        
+        # Fallback to Local DB
+        is_primary = "小学" in str(phase)
+        target_db = self.knowledge_db.get("primary" if is_primary else "advanced", {})
+        
+        fallback = [f"探索发现：保持好奇心，继续探索{subject}的奥秘！"]
+        candidates = target_db.get(subject, fallback)
+        
+        # Try to find subject in JSON
+        candidates = target_db.get(subject)
+        
+        # If subject not found, try '通用' as secondary fallback
+        if not candidates:
+            candidates = target_db.get("通用", [])
+            
+        # If still empty, use hard fallback
+        if not candidates:
+             candidates = [f"探索发现：{subject}充满了奥秘，保持好奇心！"]
+             
+        return random.choice(candidates)
+             
+    def explain(self, content: str, subject: str, grade: str, phase: str):
+        if not self.client:
+            return "智能助手暂不可用，请配置 API Key。"
+            
+        try:
+            response = self.client.chat.completions.create(
+                # model="deepseek-chat", # Official DeepSeek Model
+                model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
+                messages=[
+                    {"role": "system", "content": "You are a helpful expert tutor."},
+                    {"role": "user", "content": f"Please provide a detailed, easy-to-understand explanation of the following knowledge point for a {phase} {grade} student studying {subject}. \n\nKnowledge Point: {content}\n\nInclude examples, context, or formulas if necessary. Output in Markdown with LaTeX support for math."}
+                ],
+                timeout=60,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"LLM Explain Failed: {str(e)}")
+            if "Insufficient Balance" in str(e) or "402" in str(e):
+                return "API 余额不足，无法生成详解，请检查 DeepSeek 账户余额。"
+            return "抱歉，生成详解时遇到问题，请稍后再试。"
 
 knowledge_service = KnowledgeService()
 
 # APIs
+
+class ExplainRequest(BaseModel):
+    content: str
+    subject: str
+    user_id: int
+
+@app.post("/api/explain-card")
+def explain_card(req: ExplainRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == req.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    explanation = knowledge_service.explain(req.content, req.subject, user.grade, user.phase)
+    return {"explanation": explanation}
 
 @app.get("/api/users", response_model=List[UserResponse])
 def get_users(db: Session = Depends(get_db)):
