@@ -73,6 +73,18 @@ const SUBJECT_COLORS: Record<string, string> = {
   "通用": "bg-gray-100 border-gray-200 text-gray-900",
 };
 
+const SUBJECT_BADGE_COLORS: Record<string, string> = {
+  "数学": "bg-blue-500 shadow-blue-200",
+  "语文": "bg-red-500 shadow-red-200",
+  "英语": "bg-purple-500 shadow-purple-200",
+  "物理": "bg-indigo-500 shadow-indigo-200",
+  "化学": "bg-emerald-500 shadow-emerald-200",
+  "生物": "bg-green-500 shadow-green-200",
+  "历史": "bg-amber-500 shadow-amber-200",
+  "地理": "bg-cyan-500 shadow-cyan-200",
+  "通用": "bg-gray-500 shadow-gray-200",
+};
+
 import Latex from "react-latex-next";
 import "katex/dist/katex.min.css";
 
@@ -98,6 +110,7 @@ function SortableCard({ card, onRefresh, onExplain }: { card: CardData, onRefres
   };
 
   const colorClass = SUBJECT_COLORS[card.subject] || SUBJECT_COLORS["通用"];
+  const badgeColorClass = SUBJECT_BADGE_COLORS[card.subject] || SUBJECT_BADGE_COLORS["通用"];
 
   const handleRefreshClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -140,7 +153,7 @@ function SortableCard({ card, onRefresh, onExplain }: { card: CardData, onRefres
 
         {/* Header */}
         <div className="flex justify-between items-center pr-20 border-b border-dashed border-slate-100 pb-2">
-          <Badge variant="outline" className={cn("bg-white border-none font-bold text-xs px-2.5 py-0.5 shadow-sm", colorClass.split(" ")[2])}>
+          <Badge variant="outline" className={cn("border-none font-bold text-sm px-3 py-1 text-white shadow-md rounded-lg", badgeColorClass)}>
             {card.subject}
           </Badge>
           <span className="text-[10px] text-slate-400 font-mono">{card.date}</span>

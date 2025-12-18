@@ -91,7 +91,8 @@ class KnowledgeService:
             try:
                 response = self.client.chat.completions.create(
                     # model="gpt-3.5-turbo", # Old Model
-                    model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
+                    # model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
+                    model="Qwen/Qwen2.5-72B-Instruct", # SiliconFlow Qwen Model (More Stable)
                     messages=[
                         {"role": "system", "content": "You are a helpful tutor. Output only the content of a knowledge card. Format: 'Concept Name：Concept Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs."},
                         {"role": "user", "content": f"Generate a single, interesting, short educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题' itself. Ensure ALL math parts like x^2 are wrapped in $...$."}
@@ -129,7 +130,8 @@ class KnowledgeService:
         try:
             response = self.client.chat.completions.create(
                 # model="deepseek-chat", # Official DeepSeek Model
-                model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
+                # model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
+                model="Qwen/Qwen2.5-72B-Instruct", # SiliconFlow Qwen Model (More Stable)
                 messages=[
                     {"role": "system", "content": "You are a helpful expert tutor."},
                     {"role": "user", "content": f"Please provide a detailed, easy-to-understand explanation of the following knowledge point for a {phase} {grade} student studying {subject}. \n\nKnowledge Point: {content}\n\nInclude examples, context, or formulas if necessary. Output in Markdown with LaTeX support for math."}
