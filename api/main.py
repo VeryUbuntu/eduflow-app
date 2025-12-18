@@ -95,7 +95,7 @@ class KnowledgeService:
                     model="Qwen/Qwen2.5-72B-Instruct", # SiliconFlow Qwen Model (More Stable)
                     messages=[
                         {"role": "system", "content": "You are a helpful tutor. Output only the content of a knowledge card. Format: 'Concept Name：Concept Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs."},
-                        {"role": "user", "content": f"Generate a single, interesting, short educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题' itself. Ensure ALL math parts like x^2 are wrapped in $...$."}
+                        {"role": "user", "content": f"Generate a RANDOM, UNIQUE, interesting educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题'. Pick a different topic each time. (RandomId: {random.randint(1, 10000)})"}
                     ],
                     timeout=30
                 )
