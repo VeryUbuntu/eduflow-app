@@ -132,12 +132,14 @@ class GoalResponse(BaseModel):
 class KnowledgeService:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY") 
-        self.base_url = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        # Default to Google Gemini Base URL if not set
+        self.base_url = os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
         self.client = None
         if self.api_key:
             self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         
         # Load Local Knowledge Base
+        self.knowledge_db = {}
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             json_path = os.path.join(current_dir, "data", "knowledge_base.json")
@@ -153,7 +155,8 @@ class KnowledgeService:
                 response = self.client.chat.completions.create(
                     # model="gpt-3.5-turbo", # Old Model
                     # model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
-                    model="Qwen/Qwen2.5-72B-Instruct", # SiliconFlow Qwen Model (More Stable)
+                    # model="Qwen/Qwen2.5-72B-Instruct", # SiliconFlow Qwen Model (More Stable)
+                    model="gemini-1.5-flash", # Google Gemini Free Tier
                     messages=[
                         {"role": "system", "content": "You are a helpful tutor. Output only the content of a knowledge card. Format: 'Concept Name：Concept Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs."},
                         {"role": "user", "content": f"Generate a RANDOM, UNIQUE, interesting educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题'. Pick a different topic each time. (RandomId: {random.randint(1, 10000)})"}
@@ -193,7 +196,8 @@ class KnowledgeService:
             response = self.client.chat.completions.create(
                 # model="deepseek-chat", # Official DeepSeek Model
                 # model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
-                model="Qwen/Qwen2.5-72B-Instruct", # SiliconFlow Qwen Model (More Stable)
+                # model="Qwen/Qwen2.5-72B-Instruct", # SiliconFlow Qwen Model (More Stable)
+                model="gemini-1.5-flash", # Google Gemini Free Tier
                 messages=[
                     {"role": "system", "content": f"You are an expert {subject} tutor for {phase} {grade} students. Your goal is to explain {subject} concepts clearly and accurately."},
                     {"role": "user", "content": f"""Please explain the following {subject} concept in detail.
