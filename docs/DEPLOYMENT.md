@@ -74,7 +74,8 @@ cd eduflow-app
 1.  **安装依赖**:
     ```bash
     cd .. # 回到 eduflow-app 根目录
-    npm install
+    # 注意：由于使用了 React 19，部分老旧库需要加上 --legacy-peer-deps 参数来忽略版本警告
+    npm install --legacy-peer-deps
     ```
 
 2.  **构建生产版本**:
