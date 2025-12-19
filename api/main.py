@@ -441,7 +441,7 @@ def get_user_goal(user_id: int, db: Session = Depends(get_db)):
     return GoalResponse(
         id=goal.id,
         description=goal.description,
-        target_date=goal.target_date.strftime("%Y-%m-%d")
+        target_date=goal.target_date
     )
 
 @app.post("/api/users/{user_id}/goal", response_model=GoalResponse)
@@ -456,7 +456,7 @@ def set_user_goal(user_id: int, goal_in: GoalCreate, db: Session = Depends(get_d
     
     new_goal = Goal(
         description=goal_in.description,
-        target_date=datetime.strptime(goal_in.target_date, "%Y-%m-%d").date(),
+        target_date=goal_in.target_date, # Raw string
         user_id=user_id,
         is_active=True
     )
@@ -467,7 +467,7 @@ def set_user_goal(user_id: int, goal_in: GoalCreate, db: Session = Depends(get_d
     return GoalResponse(
         id=new_goal.id,
         description=new_goal.description,
-        target_date=new_goal.target_date.strftime("%Y-%m-%d")
+        target_date=new_goal.target_date
     )
 
 if __name__ == "__main__":
