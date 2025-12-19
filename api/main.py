@@ -35,7 +35,8 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # Auth Security
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Switched to pbkdf2_sha256 to avoid bcrypt 72-byte limit crash on some envs
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/token")
 
 def get_db():
