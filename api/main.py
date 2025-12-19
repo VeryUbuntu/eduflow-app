@@ -13,7 +13,8 @@ import json
 from openai import OpenAI
 from dotenv import load_dotenv
 from passlib.context import CryptContext
-from jose import JWTError, jwt
+import google.generativeai as genai
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -132,11 +133,13 @@ class GoalResponse(BaseModel):
 class KnowledgeService:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY") 
-        # Default to Google Gemini Base URL if not set
-        self.base_url = os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
-        self.client = None
+        self.model = None
         if self.api_key:
-            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            try:
+                genai.configure(api_key=self.api_key)
+                self.model = genai.GenerativeModel('gemini-1.5-flash')
+            except Exception as e:
+                print(f"GenAI Config Failed: {e}")
         
         # Load Local Knowledge Base
         self.knowledge_db = {}
@@ -150,20 +153,14 @@ class KnowledgeService:
             self.knowledge_db = {"primary": {}, "advanced": {}}
 
     def generate(self, subject: str, grade: str, phase: str):
-        if self.client:
+        if self.model:
             try:
-                response = self.client.chat.completions.create(
-                    # model="gpt-3.5-turbo", # Old Model
-                    # model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
-                    # model="Qwen/Qwen2.5-72B-Instruct", # SiliconFlow Qwen Model (More Stable)
-                    model="gemini-1.5-flash", # Google Gemini Free Tier
-                    messages=[
-                        {"role": "system", "content": "You are a helpful tutor. Output only the content of a knowledge card. Format: 'Concept Name：Concept Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs."},
-                        {"role": "user", "content": f"Generate a RANDOM, UNIQUE, interesting educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题'. Pick a different topic each time. (RandomId: {random.randint(1, 10000)})"}
-                    ],
-                    timeout=30
-                )
-                return response.choices[0].message.content
+                prompt = f"""You are a helpful tutor. Output only the content of a knowledge card. Format: 'Concept Name：Concept Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs.
+                
+Generate a RANDOM, UNIQUE, interesting educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题'. Pick a different topic each time. (RandomId: {random.randint(1, 10000)})"""
+                
+                response = self.model.generate_content(prompt)
+                return response.text
             except Exception as e:
                 print(f"LLM Failed: {e}")
         
@@ -183,25 +180,20 @@ class KnowledgeService:
             
         # If still empty, use hard fallback
         if not candidates:
-             candidates = [f"探索发现：{subject}充满了奥秘，保持好奇心！"]
-             
+            candidates = [f"探索发现：{subject}充满了奥秘，保持好奇心！"]
+            
         return random.choice(candidates)
              
     def explain(self, content: str, subject: str, grade: str, phase: str):
         print(f"DEBUG_EXPLAIN: Subject={subject} | Grade={grade} | Content={content[:30]}...")
-        if not self.client:
+        if not self.model:
             return "智能助手暂不可用，请配置 API Key。"
             
         try:
-            response = self.client.chat.completions.create(
-                # model="deepseek-chat", # Official DeepSeek Model
-                # model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
-                # model="Qwen/Qwen2.5-72B-Instruct", # SiliconFlow Qwen Model (More Stable)
-                model="gemini-1.5-flash", # Google Gemini Free Tier
-                messages=[
-                    {"role": "system", "content": f"You are an expert {subject} tutor for {phase} {grade} students. Your goal is to explain {subject} concepts clearly and accurately."},
-                    {"role": "user", "content": f"""Please explain the following {subject} concept in detail.
-                    
+            prompt = f"""You are an expert {subject} tutor for {phase} {grade} students. Your goal is to explain {subject} concepts clearly and accurately.
+
+Please explain the following {subject} concept in detail.
+
 Concept: "{content}"
 
 Requirements:
@@ -209,18 +201,15 @@ Requirements:
 2. Use clear, encouraging language suitable for a {grade} student.
 3. Include real-world examples, analogies, or formulas if applicable.
 4. Output in Markdown with LaTeX support for math (e.g. $E=mc^2$).
-"""}
-                ],
-                timeout=60,
-                temperature=0.7
-            )
-            result = response.choices[0].message.content
+"""
+            response = self.model.generate_content(prompt)
+            result = response.text
             print(f"DEBUG_EXPLAIN_RESPONSE: {result[:30]}...")
             return result
         except Exception as e:
             print(f"LLM Explain Failed: {str(e)}")
             if "Insufficient Balance" in str(e) or "402" in str(e):
-                return "API 余额不足，无法生成详解，请检查 DeepSeek 账户余额。"
+                return "API 余额不足（或 Key 无效），无法生成详解。"
             return "抱歉，生成详解时遇到问题，请稍后再试。"
 
 knowledge_service = KnowledgeService()
