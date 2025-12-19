@@ -185,6 +185,7 @@ class KnowledgeService:
         return random.choice(candidates)
              
     def explain(self, content: str, subject: str, grade: str, phase: str):
+        print(f"DEBUG_EXPLAIN: Subject={subject} | Grade={grade} | Content={content[:30]}...")
         if not self.client:
             return "智能助手暂不可用，请配置 API Key。"
             
@@ -194,13 +195,24 @@ class KnowledgeService:
                 # model="deepseek-ai/DeepSeek-V2.5", # SiliconFlow Model
                 model="Qwen/Qwen2.5-72B-Instruct", # SiliconFlow Qwen Model (More Stable)
                 messages=[
-                    {"role": "system", "content": "You are a helpful expert tutor."},
-                    {"role": "user", "content": f"Please provide a detailed, easy-to-understand explanation of the following knowledge point for a {phase} {grade} student studying {subject}. \n\nKnowledge Point: {content}\n\nInclude examples, context, or formulas if necessary. Output in Markdown with LaTeX support for math."}
+                    {"role": "system", "content": f"You are an expert {subject} tutor for {phase} {grade} students. Your goal is to explain {subject} concepts clearly and accurately."},
+                    {"role": "user", "content": f"""Please explain the following {subject} concept in detail.
+                    
+Concept: "{content}"
+
+Requirements:
+1. Explain ONLY this specific concept. Do NOT discuss unrelated subjects.
+2. Use clear, encouraging language suitable for a {grade} student.
+3. Include real-world examples, analogies, or formulas if applicable.
+4. Output in Markdown with LaTeX support for math (e.g. $E=mc^2$).
+"""}
                 ],
                 timeout=60,
                 temperature=0.7
             )
-            return response.choices[0].message.content
+            result = response.choices[0].message.content
+            print(f"DEBUG_EXPLAIN_RESPONSE: {result[:30]}...")
+            return result
         except Exception as e:
             print(f"LLM Explain Failed: {str(e)}")
             if "Insufficient Balance" in str(e) or "402" in str(e):
