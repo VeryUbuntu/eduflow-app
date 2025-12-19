@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI, UploadFile, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, Boolean
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from openai import OpenAI
@@ -135,19 +135,13 @@ class UserResponse(BaseModel):
     
     class Config:
         from_attributes = True
-        json_encoders = {
-            list: lambda v: ",".join(v)
-        }
-        
-    # Custom serializer for subjects list
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate_subjects
 
+    # Custom serializer for subjects list (Pydantic V2)
+    @field_validator('subjects', mode='before')
     @classmethod
-    def validate_subjects(cls, v):
+    def split_subjects(cls, v):
         if isinstance(v, str):
-            return v.split(',')
+            return v.split(',') if v else []
         return v
 
 class CardResponse(BaseModel):
@@ -245,8 +239,6 @@ class KnowledgeService:
 
 knowledge_service = KnowledgeService()
 
-
-
 # Auth Endpoints
 @app.post("/api/register", response_model=Token)
 def register(account_in: AccountCreate, db: Session = Depends(get_db)):
@@ -279,9 +271,6 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-class ForgotPasswordRequest(BaseModel):
-    email: str
-
 @app.post("/api/forgot-password")
 def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     # 1. Check if account exists
@@ -297,12 +286,13 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
 
 @app.post("/api/explain-card")
 def explain_card(req: ExplainRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == req.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-        
-    explanation = knowledge_service.explain(req.content, req.subject, user.grade, user.phase)
-    return {"explanation": explanation}
+    # Note: user_id is not passed in req for ExplainRequest currently
+    # We should infer user info or expect it. 
+    # Current frontend passes {content, subject} and maybe grade/phase.
+    # We might need to fetch user grade from db if not passed.
+    # Or just use defaults.
+    
+    return {"explanation": knowledge_service.explain(req.content, req.subject, req.grade, req.phase)}
 
 @app.get("/api/users", response_model=List[UserResponse])
 def get_users(current_account: Account = Depends(get_current_account), db: Session = Depends(get_db)):
@@ -318,7 +308,7 @@ def create_user(user_in: UserCreate, current_account: Account = Depends(get_curr
         name=user_in.name,
         phase=user_in.phase,
         grade=user_in.grade,
-        subjects=user_in.subjects,
+        subjects=",".join(user_in.subjects), # Convert List to String for DB
         account_id=current_account.id
     )
     db.add(new_user)
@@ -336,10 +326,13 @@ def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, 
     cards_response = []
     
     # 1. Iterate over ALL subscribed subjects
-    if not user.subjects:
+    # subjects is string from DB, split carefully
+    user_subjects_list = user.subjects.split(",") if user.subjects else []
+    
+    if not user_subjects_list:
         subjects_to_cover = ["通用"]
     else:
-        subjects_to_cover = user.subjects
+        subjects_to_cover = user_subjects_list
 
     for subject in subjects_to_cover:
         # Check cache for THIS subject
