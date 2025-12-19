@@ -1,43 +1,70 @@
-from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel
-from typing import List, Optional
-from datetime import date, datetime, timedelta
-import uvicorn
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from models import Base, User, Goal, CalendarEntry, Account
-import random
+```python
 import os
+import random
 import json
+from typing import List, Optional
+from datetime import datetime, timedelta
+from fastapi import FastAPI, UploadFile, HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, Boolean
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from openai import OpenAI
 from dotenv import load_dotenv
 from passlib.context import CryptContext
 from jose import jwt, JWTError
-import google.generativeai as genai
-from dotenv import load_dotenv
 
 load_dotenv()
 
 # Auth Config
 SECRET_KEY = os.getenv("SECRET_KEY", "eduflow-secret-key-2025")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days validity
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 
 
 # Database Setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///./eduflow.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-# Ensure tables are created (including new Account table)
-# Note: SQLite doesn't support easy migration for existing tables.
-# If 'users' table exists without 'account_id', it might error on query or insert.
+# Models
+class Account(Base):
+    __tablename__ = "accounts"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"))
+    name = Column(String, index=True)
+    phase = Column(String)
+    grade = Column(String)
+    subjects = Column(String) # Stored as comma-separated string
+
+class Goal(Base):
+    __tablename__ = "goals"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    description = Column(String)
+    target_date = Column(String)
+    is_active = Column(Boolean, default=True)
+
+class CalendarEntry(Base):
+    __tablename__ = "calendar_entries"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    date = Column(String) # YYYY-MM-DD
+    content = Column(Text)
+    subject = Column(String)
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
 # Auth Security
-# Switched to pbkdf2_sha256 to avoid bcrypt 72-byte limit crash on some envs
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/token")
 
@@ -85,7 +112,6 @@ async def get_current_account(token: str = Depends(oauth2_scheme), db: Session =
     return account
 
 # Pydantic Models
-# Pydantic Models for Auth
 class AccountCreate(BaseModel):
     username: str
     password: str
@@ -109,6 +135,20 @@ class UserResponse(BaseModel):
     
     class Config:
         from_attributes = True
+        json_encoders = {
+            list: lambda v: ",".join(v)
+        }
+        
+    # Custom serializer for subjects list
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate_subjects
+
+    @classmethod
+    def validate_subjects(cls, v):
+        if isinstance(v, str):
+            return v.split(',')
+        return v
 
 class CardResponse(BaseModel):
     id: int
@@ -121,7 +161,7 @@ class CardResponse(BaseModel):
 class GoalCreate(BaseModel):
     description: str
     target_date: str 
-
+    
 class GoalResponse(BaseModel):
     id: int
     description: str
@@ -130,96 +170,83 @@ class GoalResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# --- LLM Service ---
+class ExplainRequest(BaseModel):
+    content: str
+    subject: str
+    grade: str = "通用"
+    phase: str = "通用"
+    
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+# Knowledge Service with OpenAI Client (Restored)
 class KnowledgeService:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY") 
-        self.model = None
+        self.base_url = os.getenv("LLM_BASE_URL", "https://api.siliconflow.cn/v1")
+        self.client = None
         if self.api_key:
-            try:
-                genai.configure(api_key=self.api_key)
-                self.model = genai.GenerativeModel('gemini-1.5-flash')
-            except Exception as e:
-                print(f"GenAI Config Failed: {e}")
+            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         
-        # Load Local Knowledge Base
         self.knowledge_db = {}
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             json_path = os.path.join(current_dir, "data", "knowledge_base.json")
             with open(json_path, "r", encoding="utf-8") as f:
                 self.knowledge_db = json.load(f)
-        except Exception as e:
-            print(f"Failed to load knowledge base: {e}")
+        except Exception:
             self.knowledge_db = {"primary": {}, "advanced": {}}
 
     def generate(self, subject: str, grade: str, phase: str):
-        if self.model:
+        if self.client:
             try:
-                prompt = f"""You are a helpful tutor. Output only the content of a knowledge card. Format: 'Concept Name：Concept Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs.
-                
-Generate a RANDOM, UNIQUE, interesting educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题'. Pick a different topic each time. (RandomId: {random.randint(1, 10000)})"""
-                
-                response = self.model.generate_content(prompt)
-                return response.text
+                response = self.client.chat.completions.create(
+                    model="Qwen/Qwen2.5-72B-Instruct", 
+                    messages=[
+                        {"role": "system", "content": "You are a helpful tutor. Output only the content of a knowledge card. Format: 'Concept Name：Concept Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs."},
+                        {"role": "user", "content": f"Generate a RANDOM, UNIQUE, interesting educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题'. Pick a different topic each time. (RandomId: {random.randint(1, 10000)})"}
+                    ],
+                    timeout=30
+                )
+                return response.choices[0].message.content
             except Exception as e:
                 print(f"LLM Failed: {e}")
         
-        # Fallback to Local DB
+        # Fallback
         is_primary = "小学" in str(phase)
         target_db = self.knowledge_db.get("primary" if is_primary else "advanced", {})
-        
-        fallback = [f"探索发现：保持好奇心，继续探索{subject}的奥秘！"]
-        candidates = target_db.get(subject, fallback)
-        
-        # Try to find subject in JSON
         candidates = target_db.get(subject)
-        
-        # If subject not found, try '通用' as secondary fallback
         if not candidates:
             candidates = target_db.get("通用", [])
-            
-        # If still empty, use hard fallback
         if not candidates:
             candidates = [f"探索发现：{subject}充满了奥秘，保持好奇心！"]
             
         return random.choice(candidates)
              
     def explain(self, content: str, subject: str, grade: str, phase: str):
-        print(f"DEBUG_EXPLAIN: Subject={subject} | Grade={grade} | Content={content[:30]}...")
-        if not self.model:
+        print(f"DEBUG_EXPLAIN: Subject={subject}")
+        if not self.client:
             return "智能助手暂不可用，请配置 API Key。"
             
         try:
-            prompt = f"""You are an expert {subject} tutor for {phase} {grade} students. Your goal is to explain {subject} concepts clearly and accurately.
-
-Please explain the following {subject} concept in detail.
-
-Concept: "{content}"
-
-Requirements:
-1. Explain ONLY this specific concept. Do NOT discuss unrelated subjects.
-2. Use clear, encouraging language suitable for a {grade} student.
-3. Include real-world examples, analogies, or formulas if applicable.
-4. Output in Markdown with LaTeX support for math (e.g. $E=mc^2$).
-"""
-            response = self.model.generate_content(prompt)
-            result = response.text
-            print(f"DEBUG_EXPLAIN_RESPONSE: {result[:30]}...")
-            return result
+            response = self.client.chat.completions.create(
+                model="Qwen/Qwen2.5-72B-Instruct", 
+                messages=[
+                    {"role": "system", "content": f"You are an expert {subject} tutor for {phase} {grade} students. Your goal is to explain {subject} concepts clearly and accurately."},
+                    {"role": "user", "content": f"Please explain the following {subject} concept in detail.\n\nConcept: '{content}'\n\nRequirements:\n1. Explain ONLY this concept.\n2. Use clear, encouraging language suitable for {grade}.\n3. Include examples/formulas if applicable.\n4. Output in Markdown."}
+                ],
+                timeout=60,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
         except Exception as e:
             print(f"LLM Explain Failed: {str(e)}")
-            if "Insufficient Balance" in str(e) or "402" in str(e):
-                return "API 余额不足（或 Key 无效），无法生成详解。"
             return "抱歉，生成详解时遇到问题，请稍后再试。"
 
 knowledge_service = KnowledgeService()
 
 # APIs
 
-class ExplainRequest(BaseModel):
-    content: str
-    subject: str
     user_id: int
 
 # Auth Endpoints
