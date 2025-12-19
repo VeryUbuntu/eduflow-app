@@ -123,3 +123,25 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Fix KaTeX display issues to match surrounding text */
+.katex {
+  font-size: 1em !important;
+  font-family: inherit !important;
+  line-height: inherit !important;
+}
+
+.katex .base {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Ensure CJK in KaTeX matches */
+.katex .CJK_main {
+    font-family: inherit !important;
+}
+
+/* Fix mathcal/main fonts being too thin/thick compared to sans */
+.katex-html {
+    font-weight: 400 !important;
+}

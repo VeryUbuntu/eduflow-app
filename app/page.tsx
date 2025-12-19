@@ -169,7 +169,7 @@ function SortableCard({ card, onRefresh, onExplain }: { card: CardData, onRefres
               })()}
             </Latex>
           </h3>
-          <div className="text-base text-slate-600 leading-[1.75] font-normal w-full tracking-wide whitespace-pre-line">
+          <div className="text-[15px] text-slate-600 leading-relaxed font-normal w-full whitespace-pre-line hyphens-auto">
             <Latex>
               {(() => {
                 const parts = card.content.split(/[:：]/);
