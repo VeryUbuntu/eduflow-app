@@ -245,9 +245,7 @@ class KnowledgeService:
 
 knowledge_service = KnowledgeService()
 
-# APIs
 
-    user_id: int
 
 # Auth Endpoints
 @app.post("/api/register", response_model=Token)
