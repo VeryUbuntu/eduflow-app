@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { UserSetupForm } from "@/components/UserSetupForm";
+import { EduFlowLogo } from "@/components/EduFlowLogo";
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -401,7 +402,8 @@ export default function Home() {
   };
 
   if (loading) {
-    return <div className="h-screen w-full flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
+    // Use the new Splash Screen component
+    return <EduFlowLogo variant="splash" />;
   }
 
   if (showSetup) {
@@ -413,8 +415,9 @@ export default function Home() {
       {/* Sidebar */}
       <aside className="w-full md:w-64 bg-white border-r border-gray-200 z-20 flex flex-col gap-6 shadow-sm flex-none">
         <div className="p-6 border-b flex items-center gap-2">
-          <div className="bg-cyan-600 p-1.5 rounded-lg text-white">
-            <BookOpen size={20} strokeWidth={3} />
+          {/* New Logo Implementation */}
+          <div className="bg-cyan-600 p-1.5 rounded-lg text-white w-8 h-8 flex items-center justify-center overflow-visible">
+            <EduFlowLogo variant="icon" color="white" />
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900 leading-none">EduFlow</h1>
