@@ -13,6 +13,7 @@ import json
 from openai import OpenAI
 from dotenv import load_dotenv
 from passlib.context import CryptContext
+from jose import jwt, JWTError
 import google.generativeai as genai
 from dotenv import load_dotenv
 
