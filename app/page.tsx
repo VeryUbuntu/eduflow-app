@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { UserSetup } from "@/components/UserSetup";
+import { UserSetupForm } from "@/components/UserSetupForm";
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -369,7 +369,7 @@ export default function Home() {
   }
 
   if (showSetup) {
-    return <UserSetup onComplete={() => { setShowSetup(false); fetchUsers(); }} />;
+    return <UserSetupForm onComplete={() => { setShowSetup(false); fetchUsers(); }} />;
   }
 
   return (

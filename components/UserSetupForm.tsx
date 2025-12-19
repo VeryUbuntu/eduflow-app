@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 
-export function UserSetup({ onComplete }: { onComplete: () => void }) {
+export function UserSetupForm({ onComplete }: { onComplete: () => void }) {
     const [name, setName] = useState("");
     const [phase, setPhase] = useState("小学");
     const [grade, setGrade] = useState("");
