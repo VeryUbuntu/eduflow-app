@@ -140,7 +140,34 @@ cd eduflow-app
 
 ---
 
-## 6. 常见维护命令
+## 6. 配置 HTTPS (SSL 证书)
+
+强烈建议启用 HTTPS，否则部分现代浏览器功能（如 crypto API）将无法使用。
+
+推荐使用 `certbot` 自动通过 Let's Encrypt 申请免费证书。
+
+1.  **安装 Certbot**:
+    ```bash
+    sudo apt update
+    sudo apt install certbot python3-certbot-nginx
+    ```
+
+2.  **自动申请并配置证书**:
+    将 `<your-domain.com>` 替换为您的真实域名：
+    ```bash
+    sudo certbot --nginx -d <your-domain.com>
+    ```
+
+3.  **验证自动续期**:
+    ```bash
+    sudo certbot renew --dry-run
+    ```
+
+配置完成后，Nginx 会自动重载，您的网站即可通过 `https://` 访问。
+
+---
+
+## 7. 常见维护命令
 
 *   **查看服务状态**: `pm2 status`
 *   **查看日志**: `pm2 logs`
