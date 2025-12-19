@@ -15,21 +15,32 @@ if not api_key:
     exit(1)
 
 try:
+    print("🚀 Initializing google-genai Client...")
     client = genai.Client(api_key=api_key)
-    print("📋 Listing available models...")
     
-    # In new SDK google-genai, it is usually client.models.list()
-    # Note: Pager object is iterable
-    for m in client.models.list():
-        print(f"Found: {m.name}")
-        
-    print("\n📡 Attempting to use 'gemini-1.5-flash' again...")
+    print("📡 Sending request to Google (Standard)...")
     response = client.models.generate_content(
         model='gemini-1.5-flash',
-        contents='Hello'
+        contents='Hello, say "Connection Success" if you can hear me.'
     )
-    print("✅ SUCCESS!")
+    
+    print("\n✅ SUCCESS! Response from Google:")
     print(response.text)
+    print("-" * 50)
 
 except Exception as e:
-    print(f"\n❌ ERROR: {e}")
+    print("\n❌ FAILURE! Detailed Error:")
+    print(e)
+    print("-" * 50)
+    
+    # Try with 'models/' prefix just in case
+    try:
+        print("\n📡 Retrying with 'models/gemini-1.5-flash' prefix...")
+        response = client.models.generate_content(
+            model='models/gemini-1.5-flash',
+            contents='Hello again.'
+        )
+        print("✅ SUCCESS with prefix!")
+        print(response.text)
+    except Exception as e2:
+        print(f"❌ Both attempts failed.")
