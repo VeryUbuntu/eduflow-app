@@ -420,7 +420,8 @@ export default function Home() {
       <main
         className="flex-1 overflow-hidden relative flex flex-col bg-[#f8fafc]"
         style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='grid' width='30' height='30' patternUnits='userSpaceOnUse'%3E%3Cpath d='M 30 0 L 0 0 0 30' fill='none' stroke='rgba(0,0,0,0.05)' stroke-width='1' stroke-dasharray='4 4'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23grid)' /%3E%3C/svg%3E")`
+          backgroundImage: "radial-gradient(#e2e8f0 1px, transparent 1px)",
+          backgroundSize: "24px 24px"
         }}
       >
         <header className="flex-none px-6 py-6 md:px-8 border-b z-30 shadow-sm bg-white">
