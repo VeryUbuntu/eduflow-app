@@ -247,6 +247,22 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+@app.post("/api/forgot-password")
+def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    # 1. Check if account exists
+    account = db.query(Account).filter(Account.username == req.email).first()
+    
+    # 2. In a real app, generate a secure token and email it.
+    # For now, we just simulate the process.
+    if account:
+        print(f"Mock: Sending password reset email to {req.email}")
+        
+    return {"message": "如果在我们的系统中找到改邮箱，重置链接已发送到您的邮箱。"}
+
+
 @app.post("/api/explain-card")
 def explain_card(req: ExplainRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == req.user_id).first()
