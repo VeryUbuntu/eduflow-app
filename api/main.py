@@ -1,27 +1,42 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import uvicorn
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from models import Base, User, Goal, CalendarEntry
+from models import Base, User, Goal, CalendarEntry, Account
 import random
 import os
 import json
 from openai import OpenAI
 from dotenv import load_dotenv
+from passlib.context import CryptContext
+from jose import JWTError, jwt
 
 load_dotenv()
+
+# Auth Config
+SECRET_KEY = os.getenv("SECRET_KEY", "eduflow-secret-key-2025")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days validity
 
 # Database Setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///./eduflow.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Ensure tables are created (including new Account table)
+# Note: SQLite doesn't support easy migration for existing tables.
+# If 'users' table exists without 'account_id', it might error on query or insert.
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+# Auth Security
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/token")
 
 def get_db():
     db = SessionLocal()
@@ -30,7 +45,52 @@ def get_db():
     finally:
         db.close()
 
+# Auth Helpers
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_account(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    
+    account = db.query(Account).filter(Account.username == username).first()
+    if account is None:
+        raise credentials_exception
+    return account
+
 # Pydantic Models
+# Pydantic Models for Auth
+class AccountCreate(BaseModel):
+    username: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
 class UserCreate(BaseModel):
     name: str 
     phase: str 
@@ -155,6 +215,38 @@ class ExplainRequest(BaseModel):
     subject: str
     user_id: int
 
+# Auth Endpoints
+@app.post("/api/register", response_model=Token)
+def register(account_in: AccountCreate, db: Session = Depends(get_db)):
+    account = db.query(Account).filter(Account.username == account_in.username).first()
+    if account:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
+    hashed_password = get_password_hash(account_in.password)
+    new_account = Account(username=account_in.username, hashed_password=hashed_password)
+    db.add(new_account)
+    db.commit()
+    db.refresh(new_account)
+    
+    access_token = create_access_token(data={"sub": new_account.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/api/token", response_model=Token)
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    account = db.query(Account).filter(Account.username == form_data.username).first()
+    if not account or not verify_password(form_data.password, account.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": account.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
 @app.post("/api/explain-card")
 def explain_card(req: ExplainRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == req.user_id).first()
@@ -165,12 +257,12 @@ def explain_card(req: ExplainRequest, db: Session = Depends(get_db)):
     return {"explanation": explanation}
 
 @app.get("/api/users", response_model=List[UserResponse])
-def get_users(db: Session = Depends(get_db)):
-    return db.query(User).all()
+def get_users(current_account: Account = Depends(get_current_account), db: Session = Depends(get_db)):
+    return db.query(User).filter(User.account_id == current_account.id).all()
 
 @app.post("/api/users", response_model=UserResponse)
-def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.name == user_in.name).first()
+def create_user(user_in: UserCreate, current_account: Account = Depends(get_current_account), db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.name == user_in.name, User.account_id == current_account.id).first()
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
     
@@ -178,7 +270,8 @@ def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
         name=user_in.name,
         phase=user_in.phase,
         grade=user_in.grade,
-        subjects=user_in.subjects
+        subjects=user_in.subjects,
+        account_id=current_account.id
     )
     db.add(new_user)
     db.commit()

@@ -3,14 +3,24 @@ from sqlalchemy.orm import relationship, declarative_base
 
 Base = declarative_base()
 
+class Account(Base):
+    __tablename__ = 'accounts'
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    
+    users = relationship("User", back_populates="account")
+
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
+    name = Column(String, index=True) # Removed unique=True to allow same names in different accounts
     phase = Column(String) 
     grade = Column(String) 
     subjects = Column(JSON) 
+    account_id = Column(Integer, ForeignKey('accounts.id'))
     
+    account = relationship("Account", back_populates="users")
     goals = relationship("Goal", back_populates="user")
     calendar_entries = relationship("CalendarEntry", back_populates="user")
 
@@ -33,4 +43,3 @@ class CalendarEntry(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     
     user = relationship("User", back_populates="calendar_entries")
-# No changes needed to schema class definitions themselves, just the logic in main.py
