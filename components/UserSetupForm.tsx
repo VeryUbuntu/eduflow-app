@@ -70,28 +70,29 @@ export function UserSetupForm({ onComplete }: { onComplete: () => void }) {
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-white flex items-center justify-center p-4">
-            <div className="max-w-md w-full space-y-8">
-                <div className="text-center">
-                    <h1 className="text-3xl font-bold text-slate-900">欢迎使用 EduFlow</h1>
-                    <p className="text-slate-500 mt-2">请先创建一个用户档案以开始学习之旅。</p>
+        <div className="fixed inset-0 z-50 bg-white/95 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-2xl border border-cyan-100">
+                <div className="text-center space-y-2">
+                    <h1 className="text-3xl font-bold text-cyan-600">欢迎使用 EduFlow</h1>
+                    <p className="text-slate-500">请先创建一个用户档案以开始学习之旅。</p>
                 </div>
 
                 <div className="space-y-6">
                     <div className="space-y-2">
-                        <Label>姓名</Label>
+                        <Label className="text-slate-600">姓名</Label>
                         <Input
                             placeholder="请输入您的名字"
                             value={name}
                             onChange={e => setName(e.target.value)}
+                            className="focus-visible:ring-cyan-500 border-slate-200"
                         />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label>学段</Label>
+                            <Label className="text-slate-600">学段</Label>
                             <Select value={phase} onValueChange={setPhase}>
-                                <SelectTrigger>
+                                <SelectTrigger className="focus:ring-cyan-500 border-slate-200">
                                     <SelectValue placeholder="选择学段" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -102,17 +103,18 @@ export function UserSetupForm({ onComplete }: { onComplete: () => void }) {
                             </Select>
                         </div>
                         <div className="space-y-2">
-                            <Label>年级</Label>
+                            <Label className="text-slate-600">年级</Label>
                             <Input
                                 placeholder="例如：三年级"
                                 value={grade}
                                 onChange={e => setGrade(e.target.value)}
+                                className="focus-visible:ring-cyan-500 border-slate-200"
                             />
                         </div>
                     </div>
 
                     <div className="space-y-2">
-                        <Label>订阅科目</Label>
+                        <Label className="text-slate-600">订阅科目</Label>
                         <div className="grid grid-cols-3 gap-3">
                             {SUBJECTS.map(s => (
                                 <div key={s} className="flex items-center space-x-2">
@@ -120,15 +122,16 @@ export function UserSetupForm({ onComplete }: { onComplete: () => void }) {
                                         id={s}
                                         checked={selectedSubjects.includes(s)}
                                         onCheckedChange={() => toggleSubject(s)}
+                                        className="data-[state=checked]:bg-cyan-600 data-[state=checked]:border-cyan-600 border-slate-300"
                                     />
-                                    <Label htmlFor={s} className="cursor-pointer">{s}</Label>
+                                    <Label htmlFor={s} className="cursor-pointer text-slate-600">{s}</Label>
                                 </div>
                             ))}
                         </div>
                     </div>
 
                     <Button
-                        className="w-full"
+                        className="w-full bg-cyan-600 hover:bg-cyan-700 text-white shadow-lg shadow-cyan-500/20 transition-all active:scale-[0.98]"
                         size="lg"
                         onClick={handleSubmit}
                         disabled={loading || !name || !grade}
