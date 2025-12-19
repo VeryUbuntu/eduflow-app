@@ -13,6 +13,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
+import { getToken } from "@/lib/auth";
 
 export function UserSetupForm({ onComplete }: { onComplete: () => void }) {
     const [name, setName] = useState("");
@@ -43,7 +44,10 @@ export function UserSetupForm({ onComplete }: { onComplete: () => void }) {
         try {
             const res = await fetch("/api/users", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${getToken()}`
+                },
                 body: JSON.stringify({
                     name,
                     phase,

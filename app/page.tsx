@@ -5,7 +5,9 @@ import { UserSetupForm } from "@/components/UserSetupForm";
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { Loader2, Plus, RefreshCcw, Pencil, Target, BookOpen } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { getToken, removeToken } from "@/lib/auth";
+import { Loader2, Plus, RefreshCcw, Pencil, Target, BookOpen, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -194,6 +196,7 @@ function SortableCard({ card, onRefresh, onExplain }: { card: CardData, onRefres
 // --- Main Component ---
 
 export default function Home() {
+  const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -236,7 +239,10 @@ export default function Home() {
     try {
       const res = await fetch("/api/explain-card", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getToken()}`
+        },
         body: JSON.stringify({
           content: card.content,
           subject: card.subject,
@@ -255,8 +261,23 @@ export default function Home() {
 
   // Initial Fetch
   const fetchUsers = async () => {
+    const token = getToken();
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
     try {
-      const res = await fetch("/api/users");
+      const res = await fetch("/api/users", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+
+      if (res.status === 401) {
+        removeToken();
+        router.push("/login");
+        return;
+      }
+
       const data = await res.json();
       setUsers(data);
       if (data.length > 0) {
@@ -277,7 +298,8 @@ export default function Home() {
     try {
       const today = format(new Date(), "yyyy-MM-dd");
       const res = await fetch(`/api/generate-cards?user_id=${currentUser.id}&current_date=${today}`, {
-        method: "POST"
+        method: "POST",
+        headers: { "Authorization": `Bearer ${getToken()}` }
       });
       const data = await res.json();
       setDailyCards(data);
@@ -291,7 +313,9 @@ export default function Home() {
   const fetchUserGoal = async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/users/${currentUser.id}/goal`);
+      const res = await fetch(`/api/users/${currentUser.id}/goal`, {
+        headers: { "Authorization": `Bearer ${getToken()}` }
+      });
       if (res.ok) {
         const data = await res.json();
         setUserGoal(data);
@@ -311,7 +335,10 @@ export default function Home() {
     try {
       const res = await fetch(`/api/users/${currentUser.id}/goal`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getToken()}`
+        },
         body: JSON.stringify(goalForm)
       });
       const data = await res.json();
@@ -327,7 +354,8 @@ export default function Home() {
     try {
       const today = format(new Date(), "yyyy-MM-dd");
       const res = await fetch(`/api/regenerate-card?user_id=${currentUser.id}&subject=${subject}&current_date=${today}`, {
-        method: "POST"
+        method: "POST",
+        headers: { "Authorization": `Bearer ${getToken()}` }
       });
       const newCard = await res.json();
       setDailyCards(prev => prev.map(c => c.subject === subject ? newCard : c));
@@ -406,6 +434,12 @@ export default function Home() {
           ))}
           <Button variant="ghost" className="w-full justify-start gap-2 mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 font-medium" onClick={() => setShowSetup(true)}>
             <div className="bg-slate-200 rounded-full p-0.5"><Plus size={14} /></div> 添加家庭成员
+          </Button>
+        </div>
+
+        <div className="px-4 py-2">
+          <Button variant="ghost" className="w-full justify-start gap-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors" onClick={() => { removeToken(); router.push("/login"); }}>
+            <LogOut size={16} /> 退出登录
           </Button>
         </div>
 
