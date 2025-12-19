@@ -6,8 +6,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BookOpen, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { setToken } from "@/lib/auth";
+import { EduFlowLogo } from "@/components/EduFlowLogo";
 
 export default function RegisterPage() {
     const router = useRouter();
@@ -39,7 +40,6 @@ export default function RegisterPage() {
             });
 
             const text = await res.text();
-            console.log("Register Response:", text);
 
             let data;
             try {
@@ -64,22 +64,21 @@ export default function RegisterPage() {
     return (
         <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4 relative overflow-hidden"
             style={{
-                backgroundImage: "radial-gradient(#e2e8f0 1px, transparent 1px)",
-                backgroundSize: "24px 24px"
+                backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M60 0L0 0L0 60' fill='none' stroke='%23e2e8f0' stroke-width='1'/%3E%3C/svg%3E")`,
+                backgroundSize: "60px 60px"
             }}
         >
-            <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-100 z-10">
-                <div className="flex flex-col items-center mb-8">
-                    <div className="bg-cyan-600 p-3 rounded-xl text-white mb-4 shadow-lg shadow-cyan-200">
-                        <BookOpen size={32} strokeWidth={2.5} />
+            <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-100 z-10 transition-all">
+                <div className="flex flex-col items-center mb-10">
+                    <div className="mb-4 transform scale-125">
+                        <EduFlowLogo variant="sidebar" />
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">创建账号</h1>
-                    <p className="text-slate-500 text-sm mt-2">开启多孩子、多学科的智能学习之旅</p>
+                    <p className="text-slate-500 text-sm mt-2 font-medium">开启多孩子、多学科的智能学习之旅</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="space-y-2">
-                        <Label htmlFor="email">邮箱地址</Label>
+                        <Label htmlFor="email" className="text-cyan-900 font-medium">邮箱地址</Label>
                         <Input
                             id="email"
                             type="email"
@@ -87,12 +86,12 @@ export default function RegisterPage() {
                             required
                             value={formData.username}
                             onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                            className="h-11"
+                            className="h-11 border-cyan-100 focus-visible:ring-cyan-500 bg-cyan-50/20"
                         />
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="password">设置密码</Label>
+                        <Label htmlFor="password" className="text-cyan-900 font-medium">设置密码</Label>
                         <Input
                             id="password"
                             type="password"
@@ -101,12 +100,12 @@ export default function RegisterPage() {
                             minLength={6}
                             value={formData.password}
                             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                            className="h-11"
+                            className="h-11 border-cyan-100 focus-visible:ring-cyan-500 bg-cyan-50/20"
                         />
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="confirmPassword">确认密码</Label>
+                        <Label htmlFor="confirmPassword" className="text-cyan-900 font-medium">确认密码</Label>
                         <Input
                             id="confirmPassword"
                             type="password"
@@ -115,17 +114,17 @@ export default function RegisterPage() {
                             minLength={6}
                             value={formData.confirmPassword}
                             onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                            className="h-11"
+                            className="h-11 border-cyan-100 focus-visible:ring-cyan-500 bg-cyan-50/20"
                         />
                     </div>
 
                     {error && (
-                        <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100 font-medium">
+                        <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100 font-medium text-center">
                             {error}
                         </div>
                     )}
 
-                    <Button type="submit" className="w-full h-11 text-base bg-cyan-600 hover:bg-cyan-700 shadow-md shadow-cyan-100" disabled={loading}>
+                    <Button type="submit" className="w-full h-11 text-base bg-cyan-600 hover:bg-cyan-700 shadow-md shadow-cyan-200 transition-all hover:scale-[1.02]" disabled={loading}>
                         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "注 册"}
                     </Button>
 

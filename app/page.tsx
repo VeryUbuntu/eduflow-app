@@ -414,14 +414,10 @@ export default function Home() {
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row text-slate-800 font-sans antialiased">
       {/* Sidebar */}
       <aside className="w-full md:w-64 bg-white border-r border-gray-200 z-20 flex flex-col gap-6 shadow-sm flex-none">
-        <div className="p-6 border-b flex items-center gap-2">
-          {/* New Logo Implementation */}
-          <div className="bg-cyan-600 p-1.5 rounded-lg text-white w-8 h-8 flex items-center justify-center overflow-visible">
-            <EduFlowLogo variant="icon" color="white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900 leading-none">EduFlow</h1>
-          </div>
+
+        {/* Updated Sidebar Header with new Logo */}
+        <div className="p-8 border-b flex justify-center">
+          <EduFlowLogo variant="sidebar" />
         </div>
 
         <div className="flex-1 px-4 space-y-2 overflow-y-auto">
@@ -433,12 +429,12 @@ export default function Home() {
               className={cn(
                 "w-full text-left px-4 py-3 transition-all flex flex-col relative overflow-hidden group border-l-4",
                 currentUser?.id === u.id
-                  ? "bg-cyan-50 border-cyan-600 text-cyan-700"
-                  : "border-transparent hover:bg-slate-50 text-slate-700"
+                  ? "bg-cyan-100 border-cyan-600 text-cyan-950 shadow-sm"
+                  : "border-transparent hover:bg-cyan-50/30 text-cyan-600 hover:text-cyan-700"
               )}
             >
-              <span className={cn("text-lg relative z-10", currentUser?.id === u.id ? "font-bold" : "font-semibold")}>{u.name}</span>
-              <span className={cn("text-xs relative z-10", currentUser?.id === u.id ? "text-cyan-600/80" : "text-slate-400")}>
+              <span className={cn("text-lg relative z-10", currentUser?.id === u.id ? "font-bold" : "font-medium")}>{u.name}</span>
+              <span className={cn("text-xs relative z-10", currentUser?.id === u.id ? "text-cyan-700" : "text-slate-400")}>
                 {u.grade} | {u.phase}
               </span>
             </button>
@@ -476,8 +472,8 @@ export default function Home() {
       <main
         className="flex-1 overflow-hidden relative flex flex-col bg-[#f8fafc]"
         style={{
-          backgroundImage: "radial-gradient(#e2e8f0 1px, transparent 1px)",
-          backgroundSize: "24px 24px"
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M60 0L0 0L0 60' fill='none' stroke='%23e2e8f0' stroke-width='1'/%3E%3C/svg%3E")`,
+          backgroundSize: "60px 60px"
         }}
       >
         <header className="flex-none px-6 py-6 md:px-8 border-b z-30 shadow-sm bg-white">
@@ -565,7 +561,7 @@ export default function Home() {
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">当前目标</span>
-                      <span className="text-xs font-bold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded-md">{userGoal.description}</span>
+                      <span className="text-xs font-bold text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded-md">{userGoal.description}</span>
                     </div>
                     <div className="flex items-baseline gap-1 mt-0.5">
                       <span className="text-xs text-slate-400">还剩</span>
@@ -579,11 +575,11 @@ export default function Home() {
               ) : (
                 <Button
                   variant="outline"
-                  className="gap-2 text-slate-500 border-dashed rounded-xl h-12 px-6 hover:border-cyan-400 hover:text-cyan-600"
+                  className="gap-2 text-cyan-700 border-dashed border-cyan-300 bg-cyan-50/50 rounded-xl h-12 px-6 hover:bg-cyan-100 hover:border-cyan-500 hover:text-cyan-800 transition-all shadow-sm"
                   onClick={() => setIsGoalDialogOpen(true)}
                 >
-                  <Target size={16} />
-                  <span>设定学习目标</span>
+                  <Target size={18} className="text-cyan-600" />
+                  <span className="font-semibold">设定学习目标</span>
                 </Button>
               )}
             </div>
@@ -595,28 +591,32 @@ export default function Home() {
         <Dialog open={isGoalDialogOpen} onOpenChange={setIsGoalDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>设置阶段目标</DialogTitle>
+              <DialogTitle className="text-cyan-900 font-bold text-lg">设置阶段目标</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>目标名称</Label>
+                <Label className="text-cyan-700 font-medium">目标名称</Label>
                 <Input
+                  className="border-cyan-200 bg-cyan-50/30 text-cyan-900 focus-visible:ring-cyan-500 placeholder:text-cyan-300 font-medium"
                   placeholder="例如：期末考试"
                   value={goalForm.description}
                   onChange={(e) => setGoalForm({ ...goalForm, description: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label>目标日期</Label>
+                <Label className="text-cyan-700 font-medium">目标日期</Label>
                 <Input
                   type="date"
+                  className="border-cyan-200 bg-cyan-50/30 text-cyan-900 focus-visible:ring-cyan-500 tracking-widest font-mono"
                   value={goalForm.target_date}
                   onChange={(e) => setGoalForm({ ...goalForm, target_date: e.target.value })}
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={handleSaveGoal}>保存目标</Button>
+              <Button onClick={handleSaveGoal} className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold shadow-md shadow-cyan-200">
+                保存目标
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
