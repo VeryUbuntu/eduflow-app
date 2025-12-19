@@ -14,7 +14,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from passlib.context import CryptContext
 from jose import jwt, JWTError
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -134,13 +134,13 @@ class GoalResponse(BaseModel):
 class KnowledgeService:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY") 
-        self.model = None
+        self.client = None
         if self.api_key:
             try:
-                genai.configure(api_key=self.api_key)
-                self.model = genai.GenerativeModel('gemini-1.5-flash')
+                # New SDK: google-genai
+                self.client = genai.Client(api_key=self.api_key)
             except Exception as e:
-                print(f"GenAI Config Failed: {e}")
+                print(f"GenAI Client Init Failed: {e}")
         
         # Load Local Knowledge Base
         self.knowledge_db = {}
@@ -154,13 +154,16 @@ class KnowledgeService:
             self.knowledge_db = {"primary": {}, "advanced": {}}
 
     def generate(self, subject: str, grade: str, phase: str):
-        if self.model:
+        if self.client:
             try:
                 prompt = f"""You are a helpful tutor. Output only the content of a knowledge card. Format: 'Concept Name：Concept Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs.
                 
 Generate a RANDOM, UNIQUE, interesting educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题'. Pick a different topic each time. (RandomId: {random.randint(1, 10000)})"""
                 
-                response = self.model.generate_content(prompt)
+                response = self.client.models.generate_content(
+                    model='gemini-1.5-flash',
+                    contents=prompt
+                )
                 return response.text
             except Exception as e:
                 print(f"LLM Failed: {e}")
@@ -187,7 +190,7 @@ Generate a RANDOM, UNIQUE, interesting educational fact or tip for a {phase} {gr
              
     def explain(self, content: str, subject: str, grade: str, phase: str):
         print(f"DEBUG_EXPLAIN: Subject={subject} | Grade={grade} | Content={content[:30]}...")
-        if not self.model:
+        if not self.client:
             return "智能助手暂不可用，请配置 API Key。"
             
         try:
@@ -203,7 +206,10 @@ Requirements:
 3. Include real-world examples, analogies, or formulas if applicable.
 4. Output in Markdown with LaTeX support for math (e.g. $E=mc^2$).
 """
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=prompt
+            )
             result = response.text
             print(f"DEBUG_EXPLAIN_RESPONSE: {result[:30]}...")
             return result
