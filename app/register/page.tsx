@@ -38,14 +38,22 @@ export default function RegisterPage() {
                 }),
             });
 
-            const data = await res.json();
+            const text = await res.text();
+            console.log("Register Response:", text);
+
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                throw new Error(`服务端返回异常: ${text.substring(0, 100)}`);
+            }
 
             if (!res.ok) {
                 throw new Error(data.detail || "注册失败，请稍后再试");
             }
 
-            setToken(data.access_token); // Auto login
-            router.push("/"); // Go to dashboard (Setup will trigger there)
+            setToken(data.access_token);
+            router.push("/");
         } catch (err: any) {
             setError(err.message);
         } finally {
