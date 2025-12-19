@@ -54,9 +54,12 @@ export function UserSetup({ onComplete }: { onComplete: () => void }) {
 
             if (res.ok) {
                 onComplete();
+            } else {
+                alert("添加用户失败。请检查后端日志。");
             }
         } catch (e) {
             console.error(e);
+            alert("请求出错，请检查网络或服务器状态。");
         } finally {
             setLoading(false);
         }
