@@ -191,16 +191,18 @@ class KnowledgeService:
         except Exception:
             self.knowledge_db = {"primary": {}, "advanced": {}}
 
-    def generate(self, subject: str, grade: str, phase: str):
+    def generate(self, subject: str, grade: str, phase: str, exclude_topics: List[str] = None):
         if self.client:
+            exclude_str = f" Avoid these specific topics: {', '.join(exclude_topics)}." if exclude_topics else ""
             try:
                 response = self.client.chat.completions.create(
                     model="Qwen/Qwen2.5-72B-Instruct", 
                     messages=[
-                        {"role": "system", "content": "You are a helpful tutor. Output only the content of a knowledge card. Format: 'Concept Name：Concept Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs."},
-                        {"role": "user", "content": f"Generate a RANDOM, UNIQUE, interesting educational fact or tip for a {phase} {grade} student studying {subject}. Language: Chinese. Max 50 words. Format strictly as 'Concept Name：Content'. Example: '勾股定理：$a^2+b^2=c^2$'. Do NOT include the word 'Title' or '标题'. Pick a different topic each time. (RandomId: {random.randint(1, 10000)})"}
+                        {"role": "system", "content": "You are a creative and expert tutor. Output high-quality educational knowledge cards. Format: 'Concept Name：Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs. Be concise but insightful."},
+                        {"role": "user", "content": f"Generate a UNIQUE, interesting, and slightly challenging educational card for a {phase} {grade} student studying {subject}.{exclude_str} Language: Chinese. Max 60 words. Aim for 'lesser-known' facts or clear explanations of core concepts. Format strictly: 'Concept Name：Content'. Pick a random sub-topic. (Entropy: {random.random()})"}
                     ],
-                    timeout=30
+                    timeout=30,
+                    temperature=0.8
                 )
                 return response.choices[0].message.content
             except Exception as e:
@@ -212,6 +214,13 @@ class KnowledgeService:
         candidates = target_db.get(subject)
         if not candidates:
             candidates = target_db.get("通用", [])
+        
+        # Simple history filtering for fallback too if possible
+        if exclude_topics and candidates:
+            filtered = [c for c in candidates if not any(topic in c for topic in exclude_topics)]
+            if filtered:
+                candidates = filtered
+
         if not candidates:
             candidates = [f"探索发现：{subject}充满了奥秘，保持好奇心！"]
             
@@ -325,8 +334,17 @@ def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, 
     date_obj = datetime.strptime(current_date, "%Y-%m-%d").date()
     cards_response = []
     
+    # Get recent history to avoid repetition (last 15 entries)
+    recent_entries = db.query(CalendarEntry).filter(
+        CalendarEntry.user_id == user_id
+    ).order_by(CalendarEntry.id.desc()).limit(15).all()
+    exclude_topics = []
+    for entry in recent_entries:
+        parts = entry.content.split('：')
+        if parts:
+            exclude_topics.append(parts[0])
+
     # 1. Iterate over ALL subscribed subjects
-    # subjects is string from DB, split carefully
     user_subjects_list = user.subjects.split(",") if user.subjects else []
     
     if not user_subjects_list:
@@ -356,10 +374,10 @@ def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, 
         # If refresh or not exists, generate
         if existing_entry and ignore_cache:
             db.delete(existing_entry)
-            db.commit() # Commit delete immediately
+            db.commit() 
         
-        # Generate new
-        content = knowledge_service.generate(subject, user.grade, user.phase)
+        # Generate new with history exclusion
+        content = knowledge_service.generate(subject, user.grade, user.phase, exclude_topics=exclude_topics)
         
         new_entry = CalendarEntry(
             date=date_obj,
@@ -371,6 +389,11 @@ def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, 
         db.commit()
         db.refresh(new_entry)
         
+        # Add new topic to exclusion list for next subject in same call
+        parts = content.split('：')
+        if parts:
+            exclude_topics.append(parts[0])
+
         cards_response.append({
             "id": new_entry.id,
             "title": f"每日{subject}",
@@ -389,6 +412,12 @@ def regenerate_single_card(user_id: int, subject: str, current_date: str, db: Se
     
     date_obj = datetime.strptime(current_date, "%Y-%m-%d").date()
     
+    # Get recent history (last 15 entries)
+    recent_entries = db.query(CalendarEntry).filter(
+        CalendarEntry.user_id == user_id
+    ).order_by(CalendarEntry.id.desc()).limit(15).all()
+    exclude_topics = [e.content.split('：')[0] for e in recent_entries if '：' in e.content]
+
     # 1. Find and Delete existing
     existing = db.query(CalendarEntry).filter(
         CalendarEntry.user_id == user.id,
@@ -401,7 +430,7 @@ def regenerate_single_card(user_id: int, subject: str, current_date: str, db: Se
         db.commit()
     
     # 2. Generate New
-    content = knowledge_service.generate(subject, user.grade, user.phase)
+    content = knowledge_service.generate(subject, user.grade, user.phase, exclude_topics=exclude_topics)
     
     new_entry = CalendarEntry(
         date=date_obj,
