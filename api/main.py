@@ -2,6 +2,7 @@
 import os
 import random
 import json
+import re
 from typing import List, Optional
 from datetime import datetime, timedelta
 from fastapi import FastAPI, UploadFile, HTTPException, Depends, status
@@ -173,6 +174,14 @@ class ExplainRequest(BaseModel):
 class ForgotPasswordRequest(BaseModel):
     email: str
 
+# Knowledge Service Helpers
+def extract_topic(content: str) -> str:
+    # Robustly split by either Chinese '：' or standard ':'
+    parts = re.split(r'[:：]', content, maxsplit=1)
+    if parts:
+        return parts[0].strip()
+    return content.strip()
+
 # Knowledge Service with OpenAI Client (Restored)
 class KnowledgeService:
     def __init__(self):
@@ -193,16 +202,19 @@ class KnowledgeService:
 
     def generate(self, subject: str, grade: str, phase: str, exclude_topics: List[str] = None):
         if self.client:
-            exclude_str = f" Avoid these specific topics: {', '.join(exclude_topics)}." if exclude_topics else ""
+            exclude_text = ""
+            if exclude_topics:
+                exclude_text = f" CRITICAL REQUIREMENT: Do NOT generate anything related to the following topics: {', '.join(exclude_topics)}. Repeating these is a total failure."
+            
             try:
                 response = self.client.chat.completions.create(
                     model="Qwen/Qwen2.5-72B-Instruct", 
                     messages=[
-                        {"role": "system", "content": "You are a creative and expert tutor. Output high-quality educational knowledge cards. Format: 'Concept Name：Explanation'. Mathematical formulas MUST be standard LaTeX wrapped in single $ signs. Be concise but insightful."},
-                        {"role": "user", "content": f"Generate a UNIQUE, interesting, and slightly challenging educational card for a {phase} {grade} student studying {subject}.{exclude_str} Language: Chinese. Max 60 words. Aim for 'lesser-known' facts or clear explanations of core concepts. Format strictly: 'Concept Name：Content'. Pick a random sub-topic. (Entropy: {random.random()})"}
+                        {"role": "system", "content": f"You are a creative, expert tutor specializing in {subject} for {phase} students. Your goal is to provide surprising, high-value knowledge cards."},
+                        {"role": "user", "content": f"Generate a UNIQUE, insightful educational card for a {phase} {grade} student studying {subject}.{exclude_text} Language: Chinese. Max 60 words. Focus on fascinating sub-topics or 'did-you-know' style facts. Format strictly: 'Concept Name：Content'. Do not use generic introductions. (Sub-topic Randomizer: {random.random()})"}
                     ],
                     timeout=30,
-                    temperature=0.8
+                    temperature=0.9
                 )
                 return response.choices[0].message.content
             except Exception as e:
@@ -215,9 +227,9 @@ class KnowledgeService:
         if not candidates:
             candidates = target_db.get("通用", [])
         
-        # Simple history filtering for fallback too if possible
+        # Robust filtering for fallback
         if exclude_topics and candidates:
-            filtered = [c for c in candidates if not any(topic in c for topic in exclude_topics)]
+            filtered = [c for c in candidates if extract_topic(c) not in exclude_topics]
             if filtered:
                 candidates = filtered
 
@@ -334,15 +346,14 @@ def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, 
     date_obj = datetime.strptime(current_date, "%Y-%m-%d").date()
     cards_response = []
     
-    # Get recent history to avoid repetition (last 15 entries)
+    # Get recent history to avoid repetition (expanded to last 30 entries)
     recent_entries = db.query(CalendarEntry).filter(
         CalendarEntry.user_id == user_id
-    ).order_by(CalendarEntry.id.desc()).limit(15).all()
-    exclude_topics = []
-    for entry in recent_entries:
-        parts = entry.content.split('：')
-        if parts:
-            exclude_topics.append(parts[0])
+    ).order_by(CalendarEntry.id.desc()).limit(30).all()
+    exclude_topics = [extract_topic(e.content) for e in recent_entries]
+    
+    # Log excluded topics for debugging
+    print(f"DEBUG_GENERATE: User={user_id}, Date={current_date}, Excluding={exclude_topics}")
 
     # 1. Iterate over ALL subscribed subjects
     user_subjects_list = user.subjects.split(",") if user.subjects else []
@@ -412,11 +423,13 @@ def regenerate_single_card(user_id: int, subject: str, current_date: str, db: Se
     
     date_obj = datetime.strptime(current_date, "%Y-%m-%d").date()
     
-    # Get recent history (last 15 entries)
+    # Get recent history (expanded to last 30 entries)
     recent_entries = db.query(CalendarEntry).filter(
         CalendarEntry.user_id == user_id
-    ).order_by(CalendarEntry.id.desc()).limit(15).all()
-    exclude_topics = [e.content.split('：')[0] for e in recent_entries if '：' in e.content]
+    ).order_by(CalendarEntry.id.desc()).limit(30).all()
+    exclude_topics = [extract_topic(e.content) for e in recent_entries]
+    
+    print(f"DEBUG_REGENERATE: User={user_id}, Subject={subject}, Excluding={exclude_topics}")
 
     # 1. Find and Delete existing
     existing = db.query(CalendarEntry).filter(
