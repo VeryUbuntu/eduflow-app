@@ -200,18 +200,19 @@ class KnowledgeService:
         except Exception:
             self.knowledge_db = {"primary": {}, "advanced": {}}
 
-    def generate(self, subject: str, grade: str, phase: str, exclude_topics: List[str] = None):
+    def generate(self, subject: str, grade: str, phase: str, current_date: str = None, exclude_topics: List[str] = None):
         if self.client:
+            date_context = f" Assume today's date for a Chinese Mainland student is {current_date or datetime.now().strftime('%Y-%m-%d')}."
             exclude_text = ""
             if exclude_topics:
-                exclude_text = f" CRITICAL REQUIREMENT: Do NOT generate anything related to the following topics: {', '.join(exclude_topics)}. Repeating these is a total failure."
+                exclude_text = f" CRITICAL: Do NOT generate anything related to: {', '.join(exclude_topics)}."
             
             try:
                 response = self.client.chat.completions.create(
                     model="Qwen/Qwen2.5-72B-Instruct", 
                     messages=[
-                        {"role": "system", "content": f"You are a creative, expert tutor specializing in {subject} for {phase} students. Your goal is to provide surprising, high-value knowledge cards."},
-                        {"role": "user", "content": f"Generate a UNIQUE, insightful educational card for a {phase} {grade} student studying {subject}.{exclude_text} Language: Chinese. Max 60 words. Focus on fascinating sub-topics or 'did-you-know' style facts. Format strictly: 'Concept Name：Content'. Do not use generic introductions. (Sub-topic Randomizer: {random.random()})"}
+                        {"role": "system", "content": f"You are an expert tutor for {phase} {grade} students in Mainland China. You follow the national curriculum closely."},
+                        {"role": "user", "content": f"Generate a UNIQUE, insightful educational card for a {phase} {grade} student studying {subject}.{date_context}{exclude_text} Language: Chinese. Max 60 words. \n\nGoal: Align with the typical Chinese academic calendar. Either provide a 'Current Progress' topic (what they are learning now) or a 'Review' topic (foundational concepts from earlier terms). Format: 'Concept Name：Content'. (Sub-topic Randomizer: {random.random()})"}
                     ],
                     timeout=30,
                     temperature=0.9
@@ -387,8 +388,8 @@ def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, 
             db.delete(existing_entry)
             db.commit() 
         
-        # Generate new with history exclusion
-        content = knowledge_service.generate(subject, user.grade, user.phase, exclude_topics=exclude_topics)
+        # Generate new with history exclusion and date context
+        content = knowledge_service.generate(subject, user.grade, user.phase, current_date=current_date, exclude_topics=exclude_topics)
         
         new_entry = CalendarEntry(
             date=date_obj,
@@ -442,8 +443,8 @@ def regenerate_single_card(user_id: int, subject: str, current_date: str, db: Se
         db.delete(existing)
         db.commit()
     
-    # 2. Generate New
-    content = knowledge_service.generate(subject, user.grade, user.phase, exclude_topics=exclude_topics)
+    # 2. Generate New with date context
+    content = knowledge_service.generate(subject, user.grade, user.phase, current_date=current_date, exclude_topics=exclude_topics)
     
     new_entry = CalendarEntry(
         date=date_obj,
