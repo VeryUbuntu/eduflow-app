@@ -176,11 +176,35 @@ class ForgotPasswordRequest(BaseModel):
 
 # Knowledge Service Helpers
 def extract_topic(content: str) -> str:
-    # Robustly split by either Chinese '：' or standard ':'
-    parts = re.split(r'[:：]', content, maxsplit=1)
-    if parts:
-        return parts[0].strip()
-    return content.strip()
+    # Handle prefixes like "知识点：", "Topic:", etc.
+    # First, try to remove these patterns from the start
+    clean_content = re.sub(r'^(Topic|Concept|主题|概念|知识点|Title|标题)[:：\-\s]+', '', content, flags=re.I)
+    
+    # Then split by either Chinese '：' or standard ':' to get the header
+    parts = re.split(r'[:：]', clean_content, maxsplit=1)
+    topic = parts[0].strip() if parts else clean_content.strip()
+    return topic
+
+def is_duplicate(new_topic: str, excluded_topics: List[str]) -> bool:
+    if not excluded_topics:
+        return False
+    new_t = new_topic.lower()
+    for ex in excluded_topics:
+        ex_t = ex.lower()
+        # Exact match or substring match (e.g. "勾股定理" matches "勾股定理的应用")
+        if ex_t in new_t or new_t in ex_t:
+            return True
+    return False
+
+def log_debug_generation(msg: str):
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        debug_log = os.path.join(current_dir, "debug_generation.log")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(debug_log, "a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] {msg}\n")
+    except Exception:
+        pass
 
 # Knowledge Service with OpenAI Client (Restored)
 class KnowledgeService:
@@ -203,23 +227,38 @@ class KnowledgeService:
     def generate(self, subject: str, grade: str, phase: str, current_date: str = None, exclude_topics: List[str] = None):
         if self.client:
             date_context = f" Assume today's date for a Chinese Mainland student is {current_date or datetime.now().strftime('%Y-%m-%d')}."
-            exclude_text = ""
-            if exclude_topics:
-                exclude_text = f" CRITICAL: Do NOT generate anything related to: {', '.join(exclude_topics)}."
             
-            try:
-                response = self.client.chat.completions.create(
-                    model="Qwen/Qwen2.5-72B-Instruct", 
-                    messages=[
-                        {"role": "system", "content": f"You are an expert tutor for {phase} {grade} students in Mainland China. You follow the national curriculum closely."},
-                        {"role": "user", "content": f"Generate a UNIQUE, insightful educational card for a {phase} {grade} student studying {subject}.{date_context}{exclude_text} Language: Chinese. Max 60 words. \n\nGoal: Align with the typical Chinese academic calendar. Either provide a 'Current Progress' topic (what they are learning now) or a 'Review' topic (foundational concepts from earlier terms). Format: 'Concept Name：Content'. (Sub-topic Randomizer: {random.random()})"}
-                    ],
-                    timeout=30,
-                    temperature=0.9
-                )
-                return response.choices[0].message.content
-            except Exception as e:
-                print(f"LLM Failed: {e}")
+            # Implementation of Re-try Loop (up to 3 times)
+            for attempt in range(4):
+                exclude_text = ""
+                if exclude_topics:
+                    # Randomize the exclusion list a bit if it's too long, but keep most recent
+                    display_exclude = exclude_topics[:20] 
+                    exclude_text = f" CRITICAL: You MUST NOT generate these topics (or sub-topics of them): {', '.join(display_exclude)}. If you already mentioned these, choose a COMPLETELY DIFFERENT chapter (e.g., if Geometry is full, move to Algebra or Probability)."
+                
+                try:
+                    response = self.client.chat.completions.create(
+                        model="Qwen/Qwen2.5-72B-Instruct", 
+                        messages=[
+                            {"role": "system", "content": f"You are an expert tutor for {phase} {grade} students in Mainland China. Accuracy and VARIETY are your top priorities. Never repeat topics from the provided negative list."},
+                            {"role": "user", "content": f"Generate a UNIQUE, insightful educational card for a {phase} {grade} student studying {subject}.{date_context} {exclude_text} Language: Chinese. Max 60 words. \n\nGoal: Align with the typical Chinese academic calendar. Format: 'Concept Name：Content'. (Sub-topic Randomizer: {random.random()})"}
+                        ],
+                        timeout=30,
+                        temperature=0.95
+                    )
+                    content = response.choices[0].message.content
+                    new_topic = extract_topic(content)
+                    
+                    # Audit the response
+                    if is_duplicate(new_topic, exclude_topics) and attempt < 3:
+                        log_debug_generation(f"RETRY_ATTEMPT {attempt+1}: AI generated duplicate topic '{new_topic}' for subject '{subject}'. Re-trying...")
+                        continue # Re-try
+                    
+                    log_debug_generation(f"SUCCESS: Generated '{new_topic}' for User Session. Attempt: {attempt+1}")
+                    return content
+                except Exception as e:
+                    print(f"LLM Failed: {e}")
+                    break # Don't retry on network/api errors
         
         # Fallback
         is_primary = "小学" in str(phase)
@@ -228,9 +267,8 @@ class KnowledgeService:
         if not candidates:
             candidates = target_db.get("通用", [])
         
-        # Robust filtering for fallback
         if exclude_topics and candidates:
-            filtered = [c for c in candidates if extract_topic(c) not in exclude_topics]
+            filtered = [c for c in candidates if not is_duplicate(extract_topic(c), exclude_topics)]
             if filtered:
                 candidates = filtered
 
