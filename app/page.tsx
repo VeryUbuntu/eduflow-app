@@ -218,7 +218,7 @@ export default function Home() {
   const [isGoalDialogOpen, setIsGoalDialogOpen] = useState(false);
   const [goalForm, setGoalForm] = useState({ description: "", target_date: "" });
 
-  const [snowEnabled, setSnowEnabled] = useState(true);
+  const [snowEnabled, setSnowEnabled] = useState(false);
 
   // DnD Sensors
   const sensors = useSensors(
@@ -447,22 +447,23 @@ export default function Home() {
             <div className="bg-slate-200 rounded-full p-0.5"><Plus size={14} /></div> 添加家庭成员
           </Button>
 
+        </div>
+
+        <div className="px-4 py-2 mt-auto space-y-2">
           <Button
             variant="ghost"
             className={cn(
-              "w-full justify-start gap-2 mt-2 font-medium transition-all",
-              snowEnabled ? "text-cyan-600 bg-cyan-50 hover:bg-cyan-100" : "text-slate-400 hover:bg-slate-50"
+              "w-full justify-start gap-2 font-medium transition-all border border-dashed",
+              snowEnabled ? "text-cyan-600 bg-cyan-50 border-cyan-200" : "text-slate-400 bg-slate-50 border-slate-200"
             )}
             onClick={() => setSnowEnabled(!snowEnabled)}
           >
-            <div className={cn("rounded-full p-1 transition-colors", snowEnabled ? "bg-cyan-200 text-cyan-700" : "bg-slate-200 text-slate-400")}>
+            <div className={cn("rounded-full p-1", snowEnabled ? "bg-cyan-200 text-cyan-700" : "bg-slate-200 text-slate-400")}>
               <RefreshCcw size={12} className={cn(snowEnabled && "animate-[spin_10s_linear_infinite]")} />
             </div>
-            季节特效: {snowEnabled ? "已开启" : "已关闭"}
+            Let it Snows {snowEnabled ? "❄️" : ""}
           </Button>
-        </div>
 
-        <div className="px-4 py-2 mt-auto">
           {accountName && (
             <div className="mb-2 px-4 py-3 bg-slate-50 rounded-lg flex items-center gap-3 border border-slate-100 select-none">
               <div className="bg-cyan-100 p-2 rounded-full text-cyan-600">
