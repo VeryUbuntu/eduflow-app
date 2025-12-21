@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { UserSetupForm } from "@/components/UserSetupForm";
 import { EduFlowLogo } from "@/components/EduFlowLogo";
+import SnowEffect from "@/components/SnowEffect";
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -217,6 +218,8 @@ export default function Home() {
   const [isGoalDialogOpen, setIsGoalDialogOpen] = useState(false);
   const [goalForm, setGoalForm] = useState({ description: "", target_date: "" });
 
+  const [snowEnabled, setSnowEnabled] = useState(true);
+
   // DnD Sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -411,7 +414,8 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row text-slate-800 font-sans antialiased">
+    <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row text-slate-800 font-sans antialiased relative">
+      {snowEnabled && <SnowEffect />}
       {/* Sidebar */}
       <aside className="w-full md:w-64 bg-white border-r border-gray-200 z-20 flex flex-col gap-6 shadow-sm flex-none">
 
@@ -442,6 +446,20 @@ export default function Home() {
           <Button variant="ghost" className="w-full justify-start gap-2 mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 font-medium" onClick={() => setShowSetup(true)}>
             <div className="bg-slate-200 rounded-full p-0.5"><Plus size={14} /></div> 添加家庭成员
           </Button>
+
+          <Button
+            variant="ghost"
+            className={cn(
+              "w-full justify-start gap-2 mt-2 font-medium transition-all",
+              snowEnabled ? "text-cyan-600 bg-cyan-50 hover:bg-cyan-100" : "text-slate-400 hover:bg-slate-50"
+            )}
+            onClick={() => setSnowEnabled(!snowEnabled)}
+          >
+            <div className={cn("rounded-full p-1 transition-colors", snowEnabled ? "bg-cyan-200 text-cyan-700" : "bg-slate-200 text-slate-400")}>
+              <RefreshCcw size={12} className={cn(snowEnabled && "animate-[spin_10s_linear_infinite]")} />
+            </div>
+            季节特效: {snowEnabled ? "已开启" : "已关闭"}
+          </Button>
         </div>
 
         <div className="px-4 py-2 mt-auto">
@@ -466,15 +484,16 @@ export default function Home() {
             {format(new Date(), "yyyy年MM月dd日 EEEE", { locale: zhCN })}
           </p>
         </div>
-      </aside>
+      </aside >
 
       {/* Main Area: The "Desk" */}
-      <main
+      < main
         className="flex-1 overflow-hidden relative flex flex-col bg-[#f8fafc]"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M60 0L0 0L0 60' fill='none' stroke='%23e2e8f0' stroke-width='1'/%3E%3C/svg%3E")`,
           backgroundSize: "60px 60px"
-        }}
+        }
+        }
       >
         <header className="flex-none px-6 py-6 md:px-8 border-b z-30 shadow-sm bg-white">
           <div className="flex flex-row justify-between items-center gap-8">
@@ -693,7 +712,7 @@ export default function Home() {
             </DndContext>
           )}
         </div>
-      </main>
-    </div>
+      </main >
+    </div >
   );
 }
