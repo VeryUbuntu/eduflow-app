@@ -287,7 +287,7 @@ class KnowledgeService:
                 model="Qwen/Qwen2.5-72B-Instruct", 
                 messages=[
                     {"role": "system", "content": f"You are an expert {subject} tutor for {phase} {grade} students. Your goal is to explain {subject} concepts clearly and accurately."},
-                    {"role": "user", "content": f"Please explain the following {subject} concept in detail.\n\nConcept: '{content}'\n\nRequirements:\n1. Explain ONLY this concept.\n2. Use clear, encouraging language suitable for {grade}.\n3. Include examples/formulas if applicable.\n4. Output in Markdown."}
+                    {"role": "user", "content": f"Please explain the following {subject} concept in detail.\n\nConcept: '{content}'\n\nRequirements:\n1. Explain ONLY this concept.\n2. Use clear, encouraging language suitable for {grade}.\n3. Include examples/formulas if applicable.\n4. Output in Markdown. IMPORTANT: You MUST enclose ALL math formulas/symbols in $...$ (inline) or $$...$$ (block) for LaTeX rendering."}
                 ],
                 timeout=60,
                 temperature=0.7
