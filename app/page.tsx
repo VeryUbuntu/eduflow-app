@@ -4,6 +4,10 @@ import React, { useState, useEffect } from "react";
 import { UserSetupForm } from "@/components/UserSetupForm";
 import { EduFlowLogo } from "@/components/EduFlowLogo";
 import SnowEffect from "@/components/SnowEffect";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -669,8 +673,10 @@ export default function Home() {
                     <span>正在生成详细解读与举例...</span>
                   </div>
                 ) : (
-                  <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
-                    <Latex>{explainContent}</Latex>
+                  <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      {explainContent}
+                    </ReactMarkdown>
                   </div>
                 )}
               </div>
