@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -673,8 +674,21 @@ export default function Home() {
                     <span>正在生成详细解读与举例...</span>
                   </div>
                 ) : (
-                  <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                  <div className="prose prose-slate prose-sm max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      components={{
+                        p: (props) => <p className="mb-3 text-[15px] leading-7 text-slate-700" {...props} />,
+                        strong: (props) => <strong className="font-bold text-slate-900" {...props} />,
+                        h1: (props) => <h3 className="mt-4 mb-2 text-base font-bold text-cyan-900" {...props} />,
+                        h2: (props) => <h3 className="mt-4 mb-2 text-base font-bold text-cyan-900" {...props} />,
+                        h3: (props) => <h3 className="mt-4 mb-2 text-base font-bold text-cyan-900" {...props} />,
+                        ul: (props) => <ul className="list-disc pl-5 mb-3 space-y-1 text-slate-700" {...props} />,
+                        ol: (props) => <ol className="list-decimal pl-5 mb-3 space-y-1 text-slate-700" {...props} />,
+                        li: (props) => <li className="text-[14px] leading-6" {...props} />,
+                      }}
+                    >
                       {explainContent}
                     </ReactMarkdown>
                   </div>
