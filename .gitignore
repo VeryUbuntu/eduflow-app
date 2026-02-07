@@ -46,3 +46,29 @@ api/__pycache__/
 *.pyc
 *.db
 api/eduflow.db
+api/backup/
+api/*.log
+
+# --- Deployment ---
+logs/
+*.log
+.env.local
+.env.production.local
+
+# --- SSL Certificates ---
+*.key
+*.crt
+*.pem
+*.csr
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
