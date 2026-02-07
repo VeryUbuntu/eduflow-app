@@ -94,8 +94,7 @@ const SUBJECT_BADGE_COLORS: Record<string, string> = {
   "通用": "bg-gray-500 shadow-gray-200",
 };
 
-import Latex from "react-latex-next";
-import "katex/dist/katex.min.css";
+// Latex rendering handled by ReactMarkdown + rehype-katex
 
 // --- Components ---
 
@@ -169,20 +168,16 @@ function SortableCard({ card, onRefresh, onExplain }: { card: CardData, onRefres
         {/* Content */}
         <div className="flex-1 flex flex-col justify-center items-start text-left py-4 px-1 cursor-grab active:cursor-grabbing">
           <h3 className="text-lg font-semibold text-slate-900 mb-3 leading-snug w-full">
-            <Latex>
-              {(() => {
-                const parts = card.content.split(/[:：]/);
-                return parts.length > 0 ? parts[0] : "";
-              })()}
-            </Latex>
+            {(() => {
+              const parts = card.content.split(/[:：]/);
+              return parts.length > 0 ? parts[0] : "";
+            })()}
           </h3>
           <div className="text-[15px] text-slate-600 leading-relaxed font-normal w-full whitespace-pre-line hyphens-auto">
-            <Latex>
-              {(() => {
-                const parts = card.content.split(/[:：]/);
-                return parts.length > 1 ? parts.slice(1).join("：") : card.content;
-              })()}
-            </Latex>
+            {(() => {
+              const parts = card.content.split(/[:：]/);
+              return parts.length > 1 ? parts.slice(1).join("：") : card.content;
+            })()}
           </div>
         </div>
 
@@ -660,8 +655,8 @@ export default function Home() {
               {/* Original Content */}
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                 <p className="text-sm text-slate-500 mb-2 font-bold">原文知识点：</p>
-                <div className="text-slate-800 font-medium">
-                  <Latex>{currentExplainingCard?.content || ""}</Latex>
+                <div className="text-slate-800 font-medium whitespace-pre-line">
+                  {currentExplainingCard?.content || ""}
                 </div>
               </div>
 
