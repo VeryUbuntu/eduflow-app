@@ -3,6 +3,7 @@ module.exports = {
         {
             name: 'eduflow-backend',
             script: 'venv/bin/uvicorn',
+            interpreter: 'none',  // Don't use Node.js interpreter
             args: 'main:app --host 0.0.0.0 --port 8000',
             cwd: './api',
             instances: 1,
@@ -10,7 +11,6 @@ module.exports = {
             watch: false,
             max_memory_restart: '512M',
             env: {
-                NODE_ENV: 'production',
                 PYTHONUNBUFFERED: '1'
             },
             error_file: './logs/backend-error.log',
