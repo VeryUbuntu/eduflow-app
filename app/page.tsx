@@ -14,7 +14,7 @@ import { format, differenceInCalendarDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { useRouter } from "next/navigation";
 import { getToken, removeToken } from "@/lib/auth";
-import { Loader2, Plus, RefreshCcw, Pencil, Target, BookOpen, LogOut, UserCircle } from "lucide-react";
+import { Loader2, Plus, RefreshCcw, Pencil, Target, BookOpen, LogOut, UserCircle, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -218,6 +218,12 @@ export default function Home() {
   const [isGoalDialogOpen, setIsGoalDialogOpen] = useState(false);
   const [goalForm, setGoalForm] = useState({ description: "", target_date: "" });
 
+  // Edit/Delete User State
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", phase: "", grade: "", subjects: [] as string[] });
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
   const [snowEnabled, setSnowEnabled] = useState(false);
 
   // DnD Sensors
@@ -404,6 +410,79 @@ export default function Home() {
     setCurrentUser(u);
   };
 
+  const handleEditUser = (user: User) => {
+    setEditingUser(user);
+    setEditForm({
+      name: user.name,
+      phase: user.phase,
+      grade: user.grade,
+      subjects: user.subjects
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingUser || !editForm.name) return;
+
+    try {
+      const res = await fetch(`/api/users/${editingUser.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getToken()}`
+        },
+        body: JSON.stringify(editForm)
+      });
+
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+        if (currentUser?.id === updatedUser.id) {
+          setCurrentUser(updatedUser);
+        }
+        setIsEditDialogOpen(false);
+      }
+    } catch (e) {
+      console.error("Failed to update user", e);
+    }
+  };
+
+  const handleDeleteUser = async (user: User) => {
+    if (!confirm(`确定要删除「${user.name}」吗？此操作将删除所有相关数据且不可恢复。`)) {
+      return;
+    }
+
+    setIsDeletingUser(true);
+    try {
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${getToken()}`
+        }
+      });
+
+      if (res.ok) {
+        const remainingUsers = users.filter(u => u.id !== user.id);
+        setUsers(remainingUsers);
+
+        // If deleted user was current user, switch to another user or show setup
+        if (currentUser?.id === user.id) {
+          if (remainingUsers.length > 0) {
+            setCurrentUser(remainingUsers[0]);
+          } else {
+            setCurrentUser(null);
+            setShowSetup(true);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to delete user", e);
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
+
   if (loading) {
     // Use the new Splash Screen component
     return <EduFlowLogo variant="splash" />;
@@ -427,21 +506,54 @@ export default function Home() {
         <div className="flex-1 px-4 space-y-2 overflow-y-auto">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2">家庭成员</p>
           {users.map(u => (
-            <button
+            <div
               key={u.id}
-              onClick={() => handleSwitchUser(u)}
               className={cn(
-                "w-full text-left px-4 py-3 transition-all flex flex-col relative overflow-hidden group border-l-4",
+                "w-full text-left px-4 py-3 transition-all flex justify-between items-center relative overflow-hidden group border-l-4 rounded-r-lg",
                 currentUser?.id === u.id
                   ? "bg-cyan-100 border-cyan-600 text-cyan-950 shadow-sm"
                   : "border-transparent hover:bg-cyan-50/30 text-cyan-600 hover:text-cyan-700"
               )}
             >
-              <span className={cn("text-lg relative z-10", currentUser?.id === u.id ? "font-bold" : "font-medium")}>{u.name}</span>
-              <span className={cn("text-xs relative z-10", currentUser?.id === u.id ? "text-cyan-700" : "text-slate-400")}>
-                {u.grade} | {u.phase}
-              </span>
-            </button>
+              <button
+                onClick={() => handleSwitchUser(u)}
+                className="flex flex-col flex-1 text-left"
+              >
+                <span className={cn("text-lg relative z-10", currentUser?.id === u.id ? "font-bold" : "font-medium")}>{u.name}</span>
+                <span className={cn("text-xs relative z-10", currentUser?.id === u.id ? "text-cyan-700" : "text-slate-400")}>
+                  {u.grade} | {u.phase}
+                </span>
+              </button>
+
+              {/* Edit and Delete Buttons */}
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-cyan-200"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEditUser(u);
+                  }}
+                  title="编辑"
+                >
+                  <Pencil size={14} className="text-cyan-700" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-red-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteUser(u);
+                  }}
+                  title="删除"
+                  disabled={isDeletingUser}
+                >
+                  <Trash2 size={14} className="text-red-600" />
+                </Button>
+              </div>
+            </div>
           ))}
           <Button variant="ghost" className="w-full justify-start gap-2 mt-4 bg-slate-50 hover:bg-slate-100 text-slate-600 font-medium" onClick={() => setShowSetup(true)}>
             <div className="bg-slate-200 rounded-full p-0.5"><Plus size={14} /></div> 添加家庭成员
@@ -636,6 +748,39 @@ export default function Home() {
             <DialogFooter>
               <Button onClick={handleSaveGoal} className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold shadow-md shadow-cyan-200">
                 保存目标
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit User Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-cyan-900 font-bold text-lg">编辑家庭成员</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label className="text-cyan-700 font-medium">姓名</Label>
+                <Input
+                  className="border-cyan-200 bg-cyan-50/30 text-cyan-900 focus-visible:ring-cyan-500"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                />
+              </div>
+              {/* Note: For simplicity, only name editing is enabled. 
+                  You can add phase, grade, and subjects fields if needed */}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                取消
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold shadow-md shadow-cyan-200"
+                disabled={!editForm.name}
+              >
+                保存
               </Button>
             </DialogFooter>
           </DialogContent>

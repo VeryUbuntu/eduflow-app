@@ -127,6 +127,13 @@ class UserCreate(BaseModel):
     grade: str 
     subjects: List[str] 
 
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    phase: Optional[str] = None
+    grade: Optional[str] = None
+    subjects: Optional[List[str]] = None
+ 
+
 class UserResponse(BaseModel):
     id: int
     name: str
@@ -375,6 +382,45 @@ def create_user(user_in: UserCreate, current_account: Account = Depends(get_curr
     db.commit()
     db.refresh(new_user)
     return new_user
+
+@app.put("/api/users/{user_id}", response_model=UserResponse)
+def update_user(user_id: int, user_in: UserUpdate, current_account: Account = Depends(get_current_account), db: Session = Depends(get_db)):
+    # Find user and verify ownership
+    user = db.query(User).filter(User.id == user_id, User.account_id == current_account.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Update fields if provided
+    if user_in.name is not None:
+        user.name = user_in.name
+    if user_in.phase is not None:
+        user.phase = user_in.phase
+    if user_in.grade is not None:
+        user.grade = user_in.grade
+    if user_in.subjects is not None:
+        user.subjects = ",".join(user_in.subjects)
+    
+    db.commit()
+    db.refresh(user)
+    return user
+
+@app.delete("/api/users/{user_id}")
+def delete_user(user_id: int, current_account: Account = Depends(get_current_account), db: Session = Depends(get_db)):
+    # Find user and verify ownership
+    user = db.query(User).filter(User.id == user_id, User.account_id == current_account.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Delete related data first (goals and calendar entries)
+    db.query(Goal).filter(Goal.user_id == user_id).delete()
+    db.query(CalendarEntry).filter(CalendarEntry.user_id == user_id).delete()
+    
+    # Delete user
+    db.delete(user)
+    db.commit()
+    
+    return {"message": "User deleted successfully"}
+
 
 @app.post("/api/generate-cards", response_model=List[CardResponse])
 def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, db: Session = Depends(get_db)):
