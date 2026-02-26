@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { useRouter } from "next/navigation";
-import { getToken, removeToken } from "@/lib/auth";
+import { getToken, removeToken, setDevToken } from "@/lib/auth";
 import { Loader2, Plus, RefreshCcw, Pencil, Target, BookOpen, LogOut, UserCircle, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +51,8 @@ type User = {
   name: string;
   phase: string;
   grade: string;
+  province: string;
+  textbook_versions: Record<string, string>;
   subjects: string[];
 };
 
@@ -66,6 +68,23 @@ type CardData = {
   content: string;
   subject: string;
   date: string;
+};
+
+const PHASES = ["小学", "初中", "高中"];
+const PROVINCES = ["北京", "上海", "天津", "重庆", "河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南", "广东", "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "台湾", "内蒙古", "广西", "西藏", "宁夏", "新疆"];
+const SUBJECTS_LIST = ["语文", "数学", "英语", "物理", "化学", "生物", "历史", "地理", "道德与法治"];
+
+const SUBJECT_VERSIONS: Record<string, string[]> = {
+  "语文": ["统编版-人民教育出版社"],
+  "数学": ["人教版-人民教育出版社", "冀教版-河北教育出版社", "北京版-北京出版社", "北师大版-北京师范大学出版社", "华东师大版-华东师范大学出版社", "沪科技版-上海科学技术出版社", "浙教版-浙江教育出版社", "湘教版-湖南教育出版社", "苏科版-江苏凤凰科学技术出版社", "青岛版-青岛出版社"],
+  "英语": ["人教版-人民教育出版社", "冀教版-河北教育出版社", "北师大版-北京师范大学出版社", "外研社版-外语教学与研究出版社", "沪外教版-上海外语教育出版社", "沪教版-上海教育出版社", "科普版-科学普及出版社", "译林版-译林出版社"],
+  "物理": ["人教版-人民教育出版社", "教科版-教育科学出版社", "沪科技版-上海科学技术出版社", "沪科技粤教版-上海科技广东教育", "苏科版-江苏凤凰科学技术出版社", "北师大版-北京师范大学出版社"],
+  "化学": ["人教版-人民教育出版社", "北京版-北京出版社", "沪教版-上海教育出版社", "科学粤教版-科学广东教育", "科普版-科学普及出版社", "鲁教版-山东教育出版社"],
+  "生物": ["人教版-人民教育出版社", "冀少版-河北少年儿童出版社", "北京版-北京出版社", "北师大版-北京师范大学出版社", "济南版-济南出版社", "苏教版-江苏凤凰教育出版社", "苏科版-江苏凤凰科学技术出版社"],
+  "历史": ["统编版-人民教育出版社"],
+  "地理": ["人教版-人民教育出版社", "中图版-中国地图出版社", "商务星图版-商务星球地图出版社", "晋教版-山西教育出版社", "湘教版-湖南教育出版社", "科普版-科学普及出版社", "粤教粤人版-广东教育广东人民"],
+  "道德与法治": ["统编版-人民教育出版社"],
+  "通用": ["通用版"]
 };
 
 // --- Constants ---
@@ -221,7 +240,7 @@ export default function Home() {
   // Edit/Delete User State
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", phase: "", grade: "", subjects: [] as string[] });
+  const [editForm, setEditForm] = useState({ name: "", phase: "", grade: "", province: "", textbook_versions: {} as Record<string, string>, subjects: [] as string[] });
   const [isDeletingUser, setIsDeletingUser] = useState(false);
 
   const [snowEnabled, setSnowEnabled] = useState(false);
@@ -270,10 +289,16 @@ export default function Home() {
 
   // Initial Fetch
   const fetchUsers = async () => {
-    const token = getToken();
+    let token = getToken();
     if (!token) {
-      router.push("/login");
-      return;
+      // In local development, inject a mock token so we don't get kicked out to sxu.com
+      if (process.env.NODE_ENV === "development") {
+        setDevToken("mock-uuid-development-001");
+        token = "mock-uuid-development-001";
+      } else {
+        window.location.href = "https://sxu.com/login";
+        return;
+      }
     }
 
     try {
@@ -282,9 +307,11 @@ export default function Home() {
       });
 
       if (res.status === 401) {
-        removeToken();
-        router.push("/login");
-        return;
+        if (process.env.NODE_ENV !== "development") {
+          removeToken();
+          window.location.href = "https://sxu.com/login";
+          return;
+        }
       }
 
       const data = await res.json();
@@ -416,13 +443,38 @@ export default function Home() {
       name: user.name,
       phase: user.phase,
       grade: user.grade,
-      subjects: user.subjects
+      subjects: user.subjects,
+      province: user.province || "通用",
+      textbook_versions: user.textbook_versions || {}
     });
     setIsEditDialogOpen(true);
   };
 
+  const handleEditToggleSubject = (subject: string) => {
+    if (editForm.subjects.includes(subject)) {
+      setEditForm(prev => {
+        const newVersions = { ...prev.textbook_versions };
+        delete newVersions[subject];
+        return { ...prev, subjects: prev.subjects.filter(s => s !== subject), textbook_versions: newVersions };
+      });
+    } else {
+      setEditForm(prev => ({
+        ...prev,
+        subjects: [...prev.subjects, subject],
+        textbook_versions: { ...prev.textbook_versions, [subject]: SUBJECT_VERSIONS[subject] ? SUBJECT_VERSIONS[subject][0] : "通用版" }
+      }));
+    }
+  };
+
+  const handleEditUpdateVersion = (subject: string, version: string) => {
+    setEditForm(prev => ({
+      ...prev,
+      textbook_versions: { ...prev.textbook_versions, [subject]: version }
+    }));
+  };
+
   const handleSaveEdit = async () => {
-    if (!editingUser || !editForm.name) return;
+    if (!editingUser || !editForm.name || !editForm.grade) return;
 
     try {
       const res = await fetch(`/api/users/${editingUser.id}`, {
@@ -587,7 +639,7 @@ export default function Home() {
               </div>
             </div>
           )}
-          <Button variant="ghost" className="w-full justify-start gap-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors" onClick={() => { removeToken(); router.push("/login"); }}>
+          <Button variant="ghost" className="w-full justify-start gap-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors" onClick={() => { removeToken(); setDevToken("mock"); window.location.reload(); }}>
             <LogOut size={16} /> 退出登录
           </Button>
         </div>
@@ -755,21 +807,85 @@ export default function Home() {
 
         {/* Edit User Dialog */}
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="text-cyan-900 font-bold text-lg">编辑家庭成员</DialogTitle>
+              <DialogTitle className="text-cyan-900 font-bold text-xl">编辑家庭成员学习档案</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label className="text-cyan-700 font-medium">姓名</Label>
-                <Input
-                  className="border-cyan-200 bg-cyan-50/30 text-cyan-900 focus-visible:ring-cyan-500"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                />
+            <div className="space-y-6 py-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-slate-700 font-bold">姓名</Label>
+                  <Input
+                    className="border-cyan-200 bg-cyan-50/30 text-cyan-900 focus-visible:ring-cyan-500 shadow-sm"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-slate-700 font-bold">所在省份</Label>
+                  {/* Select for province */}
+                  <select
+                    className="w-full h-10 px-3 py-2 rounded-md border border-cyan-200 bg-cyan-50/30 text-cyan-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-sm text-sm"
+                    value={editForm.province}
+                    onChange={(e) => setEditForm({ ...editForm, province: e.target.value })}
+                  >
+                    {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-slate-700 font-bold">学段</Label>
+                  <select
+                    className="w-full h-10 px-3 py-2 rounded-md border border-cyan-200 bg-cyan-50/30 text-cyan-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-sm text-sm"
+                    value={editForm.phase}
+                    onChange={(e) => setEditForm({ ...editForm, phase: e.target.value })}
+                  >
+                    {PHASES.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-slate-700 font-bold">年级</Label>
+                  <Input
+                    className="border-cyan-200 bg-cyan-50/30 text-cyan-900 focus-visible:ring-cyan-500 shadow-sm"
+                    value={editForm.grade}
+                    placeholder="例如：初二 / 八年级"
+                    onChange={(e) => setEditForm({ ...editForm, grade: e.target.value })}
+                  />
+                </div>
               </div>
-              {/* Note: For simplicity, only name editing is enabled. 
-                  You can add phase, grade, and subjects fields if needed */}
+
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <Label className="text-slate-700 font-bold text-base">订阅科目及教材版本</Label>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {SUBJECTS_LIST.map(s => (
+                    <div key={s} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-cyan-200 hover:bg-cyan-50/30 transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          id={`edit-${s}`}
+                          checked={editForm.subjects.includes(s)}
+                          onChange={() => handleEditToggleSubject(s)}
+                          className="w-4 h-4 text-cyan-500 rounded border-slate-300 focus:ring-cyan-500"
+                        />
+                        <Label htmlFor={`edit-${s}`} className="cursor-pointer font-medium text-slate-700">{s}</Label>
+                      </div>
+                      {editForm.subjects.includes(s) && (
+                        <select
+                          value={editForm.textbook_versions[s] || (SUBJECT_VERSIONS[s] ? SUBJECT_VERSIONS[s][0] : "通用版")}
+                          onChange={(e) => handleEditUpdateVersion(s, e.target.value)}
+                          className="w-[180px] h-8 text-xs bg-white border border-slate-200 rounded px-1 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                        >
+                          {(SUBJECT_VERSIONS[s] || ["通用版"]).map(v => (
+                            <option key={v} value={v}>{v}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
@@ -778,9 +894,9 @@ export default function Home() {
               <Button
                 onClick={handleSaveEdit}
                 className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold shadow-md shadow-cyan-200"
-                disabled={!editForm.name}
+                disabled={!editForm.name || !editForm.grade || editForm.subjects.length === 0}
               >
-                保存
+                保存档案
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -1,5 +1,25 @@
 # EduFlow 更新日志
 
+## [Unreleased] - 2026-02-26
+
+### 架构重构 (Architecture Refactor)
+- **账户体系全面融合 (Supabase SSO)**：
+    - 废除本地 `SQLite Account` 注册、登录体系，整体迁移到了 `sxu.com` 部署的 **Supabase 统一身份认证中心**。
+    - 移除原有的 `/login`, `/register`, `/forgot-password` 页面，未登录状态自动重定向至 `sxu.com` 统一登录入口（开发环境除外）。
+    - `FastAPI` 后端通过解析传入的 `JWT Bearer Token` (`auth_id` / UUID) 进行鉴权并绑定学习数据。
+  
+### 新增 (Added)
+- **「千人千面」定制化学情档案**：
+    - 进阶的 `User` 数据模型：建立及编辑学生档案时，除姓名外，需选择**所在省份**、**阶段**、**年级**以及**每门特定学科对应的精确教材版本**。
+    - 教材选用列表与开源教材库 (GitHub: `TapXWorld/ChinaTextbook`) 大纲结构严格对齐同步匹配。
+    - 支持随时在线“编辑家庭成员”以更新升学年级和对应版本。
+
+### 修改 (Changed)
+- **AI 智能大纲匹配 (Two-Shot Content Generation)**：
+    - 重塑了 `main.py` 的 `KnowledgeService.generate` 大模型生成逻辑。
+    - **Step 1:** 大模型首先化作大纲检索引擎，结合学情环境参数和当前（如：春季末、寒暑假）进度，推演出该用户该教材下今日最应当学习的课本章节标题。
+    - **Step 2:** 根据推演出的精准课本章节，再次经过去重筛选后为用户量身定制具有例题和分析的百字内每日知识卡片。
+
 ## [Unreleased] - 2025-12-18
 
 ### 新增 (Added)

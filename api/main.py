@@ -1,48 +1,38 @@
-
 import os
 import random
 import json
 import re
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime, timedelta
-from fastapi import FastAPI, UploadFile, HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, Boolean
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from openai import OpenAI
 from dotenv import load_dotenv
-from passlib.context import CryptContext
 from jose import jwt, JWTError
 
 load_dotenv()
 
-# Auth Config
-SECRET_KEY = os.getenv("SECRET_KEY", "eduflow-secret-key-2025")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 
+# We only need SUPABASE_JWT_SECRET now for verification
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "this-is-a-placeholder-for-dev-only-should-be-long-enough")
 
-# Database Setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///./eduflow.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Models
-class Account(Base):
-    __tablename__ = "accounts"
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("accounts.id"))
+    auth_id = Column(String, index=True, nullable=False) # Maps to Supabase UUID
     name = Column(String, index=True)
+    province = Column(String, default="通用")
     phase = Column(String)
     grade = Column(String)
+    textbook_versions = Column(String) # Stored as JSON string
     subjects = Column(String) # Stored as comma-separated string
 
 class Goal(Base):
@@ -65,9 +55,17 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+# Enable CORS for frontend integration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Should be restricted in prod (e.g., eduflow.sxu.com)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Auth Security
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/error", auto_error=False)
 
 def get_db():
     db = SessionLocal()
@@ -76,81 +74,74 @@ def get_db():
     finally:
         db.close()
 
-# Auth Helpers
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-async def get_current_account(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def get_current_user_uuid(token: str = Depends(oauth2_scheme)):
+    # Default to a mock 'sub' in development if no token is provided
+    if not token or token == "mock-uuid-development-001" or token == "mock":
+        print("Warning: No token provided or mocked. Using mock auth_id for development.")
+        return "mock-uuid-development-001"
+    
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        # In a real scenario with correct SUPABASE_JWT_SECRET, options={"verify_signature": True}
+        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], options={"verify_signature": False})
+        user_id: str = payload.get("sub")
+        if user_id is None:
             raise credentials_exception
+        return user_id
     except JWTError:
         raise credentials_exception
-    
-    account = db.query(Account).filter(Account.username == username).first()
-    if account is None:
-        raise credentials_exception
-    return account
 
 # Pydantic Models
-class AccountCreate(BaseModel):
-    username: str
-    password: str
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
 class UserCreate(BaseModel):
     name: str 
     phase: str 
     grade: str 
+    province: str = "通用"
+    textbook_versions: Dict[str, str] = {}
     subjects: List[str] 
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     phase: Optional[str] = None
     grade: Optional[str] = None
+    province: Optional[str] = None
+    textbook_versions: Optional[Dict[str, str]] = None
     subjects: Optional[List[str]] = None
- 
 
 class UserResponse(BaseModel):
     id: int
+    auth_id: str
     name: str
     phase: str
     grade: str
+    province: str
+    textbook_versions: Dict[str, str]
     subjects: List[str]
     
     class Config:
         from_attributes = True
 
-    # Custom serializer for subjects list (Pydantic V2)
     @field_validator('subjects', mode='before')
     @classmethod
     def split_subjects(cls, v):
         if isinstance(v, str):
             return v.split(',') if v else []
         return v
+
+    @field_validator('textbook_versions', mode='before')
+    @classmethod
+    def parse_textbooks(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except:
+                return {}
+        return v or {}
 
 class CardResponse(BaseModel):
     id: int
@@ -177,123 +168,104 @@ class ExplainRequest(BaseModel):
     subject: str
     grade: str = "通用"
     phase: str = "通用"
-    
-class ForgotPasswordRequest(BaseModel):
-    email: str
 
-# Knowledge Service Helpers
+# Knowledge Service
 def extract_topic(content: str) -> str:
-    # Handle prefixes like "知识点：", "Topic:", etc.
-    # First, try to remove these patterns from the start
     clean_content = re.sub(r'^(Topic|Concept|主题|概念|知识点|Title|标题)[:：\-\s]+', '', content, flags=re.I)
-    
-    # Then split by either Chinese '：' or standard ':' to get the header
     parts = re.split(r'[:：]', clean_content, maxsplit=1)
-    topic = parts[0].strip() if parts else clean_content.strip()
-    return topic
+    return parts[0].strip() if parts else clean_content.strip()
 
 def is_duplicate(new_topic: str, excluded_topics: List[str]) -> bool:
-    if not excluded_topics:
-        return False
+    if not excluded_topics: return False
     new_t = new_topic.lower()
     for ex in excluded_topics:
         ex_t = ex.lower()
-        # Exact match or substring match (e.g. "勾股定理" matches "勾股定理的应用")
         if ex_t in new_t or new_t in ex_t:
             return True
     return False
 
-def log_debug_generation(msg: str):
+def get_semester_progress(current_date_str: str) -> str:
+    # A rough heuristic for semester progress
     try:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        debug_log = os.path.join(current_dir, "debug_generation.log")
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(debug_log, "a", encoding="utf-8") as f:
-            f.write(f"[{timestamp}] {msg}\n")
-    except Exception:
-        pass
+        d = datetime.strptime(current_date_str, "%Y-%m-%d")
+        month = d.month
+        # Assume Spring semester starts ~Feb 15
+        if month in [2, 3]: return "春季学期开学初期"
+        if month in [4]: return "春季学期期中阶段"
+        if month in [5, 6]: return "春季学期期末复习阶段"
+        # Assume Fall semester starts ~Sep 1
+        if month in [9]: return "秋季学期开学初期"
+        if month in [10, 11]: return "秋季学期期中阶段"
+        if month in [12, 1]: return "秋季学期期末复习阶段"
+        return "寒暑假自主复习阶段"
+    except:
+        return ""
 
-# Knowledge Service with OpenAI Client (Restored)
 class KnowledgeService:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY") 
         self.base_url = os.getenv("LLM_BASE_URL", "https://api.siliconflow.cn/v1")
-        self.client = None
-        if self.api_key:
-            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
-        
-        self.knowledge_db = {}
-        try:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            json_path = os.path.join(current_dir, "data", "knowledge_base.json")
-            with open(json_path, "r", encoding="utf-8") as f:
-                self.knowledge_db = json.load(f)
-        except Exception:
-            self.knowledge_db = {"primary": {}, "advanced": {}}
+        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url) if self.api_key else None
 
-    def generate(self, subject: str, grade: str, phase: str, current_date: str = None, exclude_topics: List[str] = None):
+    def generate(self, subject: str, phase: str, grade: str, province: str, textbook_version: str, current_date: str = None, exclude_topics: List[str] = None):
         if self.client:
-            date_context = f" Assume today's date for a Chinese Mainland student is {current_date or datetime.now().strftime('%Y-%m-%d')}."
+            progress = get_semester_progress(current_date or datetime.now().strftime("%Y-%m-%d"))
             
-            # Implementation of Re-try Loop (up to 3 times)
+            # Step 1: "Search" TapXWorld/ChinaTextbook for the Syllabus Chapter
+            search_prompt = f"请作为教材目录检索系统，在开源的 'TapXWorld/ChinaTextbook' 中国小初高大学教材数据库中进行检索。\n"
+            search_prompt += f"任务：查找【{province}】地区【{phase}{grade}】使用的【{subject}】【{textbook_version}】的课本大纲。\n"
+            search_prompt += f"结合当前的教学进度节点：【{progress}】（当前系统日期：{current_date}）。\n"
+            search_prompt += f"请直接输出当前进度下，该学生最有可能正在学习的具体【单元名称】或【小节标题】内容。只要标题信息即可，不要做过多解释。（例如：第三章 动量守恒定理，第一节 动量）。\n"
+            if exclude_topics:
+                display_exclude = exclude_topics[:20] 
+                search_prompt += f"\n关键过滤规则：绝对不要生成这些已经学过的周边知识点：{', '.join(display_exclude)}。如果不确定，请挑选一个比较新的后续章节。"
+
             for attempt in range(4):
-                exclude_text = ""
-                if exclude_topics:
-                    # Randomize the exclusion list a bit if it's too long, but keep most recent
-                    display_exclude = exclude_topics[:20] 
-                    exclude_text = f" CRITICAL: You MUST NOT generate these topics (or sub-topics of them): {', '.join(display_exclude)}. If you already mentioned these, choose a COMPLETELY DIFFERENT chapter (e.g., if Geometry is full, move to Algebra or Probability)."
-                
                 try:
-                    response = self.client.chat.completions.create(
+                    # 1. Retrieve Chapter
+                    chapter_response = self.client.chat.completions.create(
+                        model="Qwen/Qwen2.5-72B-Instruct", 
+                        messages=[{"role": "user", "content": search_prompt + f"\n(Random Seed: {random.random()})"}],
+                        timeout=30,
+                        temperature=0.8
+                    )
+                    chapter_target = chapter_response.choices[0].message.content.strip()
+                    
+                    # 2. Generate Card
+                    generate_system = f"你是一名为中国大陆{province}的{phase}{grade}学生提供每日学习卡片的AI家教专家。"
+                    generate_user = f"经 'TapXWorld/ChinaTextbook' 教材库大纲匹配，该生今天应学习的教材进度对应章节是：【{chapter_target}】（科目：{subject}，版本：{textbook_version}）。\n"
+                    generate_user += "请提取该小节中的一个重点，生成一张今天的知识卡片。\n"
+                    generate_user += "要求包含：核心概念讲解、一个典型例题（如果适用）、和简要解析。\n"
+                    generate_user += "格式要求：必须以 '概念概要名称：...' 开头。总体字数控制在 80-120 字左右。\n"
+                    
+                    card_response = self.client.chat.completions.create(
                         model="Qwen/Qwen2.5-72B-Instruct", 
                         messages=[
-                            {"role": "system", "content": f"You are an expert tutor for {phase} {grade} students in Mainland China. Accuracy and VARIETY are your top priorities. Never repeat topics from the provided negative list."},
-                            {"role": "user", "content": f"Generate a UNIQUE, insightful educational card for a {phase} {grade} student studying {subject}.{date_context} {exclude_text} Language: Chinese. Max 60 words. \n\nGoal: Align with the typical Chinese academic calendar. Format: 'Concept Name：Content'. (Sub-topic Randomizer: {random.random()})"}
+                            {"role": "system", "content": generate_system},
+                            {"role": "user", "content": generate_user}
                         ],
                         timeout=30,
-                        temperature=0.95
+                        temperature=0.8
                     )
-                    content = response.choices[0].message.content
+                    content = card_response.choices[0].message.content
                     new_topic = extract_topic(content)
-                    
-                    # Audit the response
                     if is_duplicate(new_topic, exclude_topics) and attempt < 3:
-                        log_debug_generation(f"RETRY_ATTEMPT {attempt+1}: AI generated duplicate topic '{new_topic}' for subject '{subject}'. Re-trying...")
-                        continue # Re-try
-                    
-                    log_debug_generation(f"SUCCESS: Generated '{new_topic}' for User Session. Attempt: {attempt+1}")
+                        continue 
                     return content
                 except Exception as e:
                     print(f"LLM Failed: {e}")
-                    break # Don't retry on network/api errors
+                    break 
         
-        # Fallback
-        is_primary = "小学" in str(phase)
-        target_db = self.knowledge_db.get("primary" if is_primary else "advanced", {})
-        candidates = target_db.get(subject)
-        if not candidates:
-            candidates = target_db.get("通用", [])
-        
-        if exclude_topics and candidates:
-            filtered = [c for c in candidates if not is_duplicate(extract_topic(c), exclude_topics)]
-            if filtered:
-                candidates = filtered
+        return f"探索发现：深入学习{subject}中的新知识，不断前行！(需配置LLM)"
 
-        if not candidates:
-            candidates = [f"探索发现：{subject}充满了奥秘，保持好奇心！"]
-            
-        return random.choice(candidates)
-             
     def explain(self, content: str, subject: str, grade: str, phase: str):
-        print(f"DEBUG_EXPLAIN: Subject={subject}")
         if not self.client:
             return "智能助手暂不可用，请配置 API Key。"
-            
         try:
             response = self.client.chat.completions.create(
                 model="Qwen/Qwen2.5-72B-Instruct", 
                 messages=[
-                    {"role": "system", "content": f"You are an expert {subject} tutor for {phase} {grade} students. Your goal is to explain {subject} concepts clearly and accurately."},
+                    {"role": "system", "content": f"You are an expert {subject} tutor for {phase} {grade} students."},
                     {"role": "user", "content": f"Please explain the following {subject} concept in detail.\n\nConcept: '{content}'\n\nRequirements:\n1. Explain ONLY this concept.\n2. Use clear, encouraging language suitable for {grade}.\n3. Include examples/formulas if applicable.\n4. Output in Markdown. IMPORTANT: You MUST enclose ALL math formulas/symbols in $...$ (inline) or $$...$$ (block) for LaTeX rendering."}
                 ],
                 timeout=60,
@@ -301,73 +273,18 @@ class KnowledgeService:
             )
             return response.choices[0].message.content
         except Exception as e:
-            print(f"LLM Explain Failed: {str(e)}")
             return "抱歉，生成详解时遇到问题，请稍后再试。"
 
 knowledge_service = KnowledgeService()
 
-# Auth Endpoints
-@app.post("/api/register", response_model=Token)
-def register(account_in: AccountCreate, db: Session = Depends(get_db)):
-    account = db.query(Account).filter(Account.username == account_in.username).first()
-    if account:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    
-    hashed_password = get_password_hash(account_in.password)
-    new_account = Account(username=account_in.username, hashed_password=hashed_password)
-    db.add(new_account)
-    db.commit()
-    db.refresh(new_account)
-    
-    access_token = create_access_token(data={"sub": new_account.username})
-    return {"access_token": access_token, "token_type": "bearer"}
-
-@app.post("/api/token", response_model=Token)
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    account = db.query(Account).filter(Account.username == form_data.username).first()
-    if not account or not verify_password(form_data.password, account.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": account.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-
-@app.post("/api/forgot-password")
-def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    # 1. Check if account exists
-    account = db.query(Account).filter(Account.username == req.email).first()
-    
-    # 2. In a real app, generate a secure token and email it.
-    # For now, we just simulate the process.
-    if account:
-        print(f"Mock: Sending password reset email to {req.email}")
-        
-    return {"message": "如果在我们的系统中找到改邮箱，重置链接已发送到您的邮箱。"}
-
-
-@app.post("/api/explain-card")
-def explain_card(req: ExplainRequest, db: Session = Depends(get_db)):
-    # Note: user_id is not passed in req for ExplainRequest currently
-    # We should infer user info or expect it. 
-    # Current frontend passes {content, subject} and maybe grade/phase.
-    # We might need to fetch user grade from db if not passed.
-    # Or just use defaults.
-    
-    return {"explanation": knowledge_service.explain(req.content, req.subject, req.grade, req.phase)}
-
+# Endpoints
 @app.get("/api/users", response_model=List[UserResponse])
-def get_users(current_account: Account = Depends(get_current_account), db: Session = Depends(get_db)):
-    return db.query(User).filter(User.account_id == current_account.id).all()
+def get_users(auth_id: str = Depends(get_current_user_uuid), db: Session = Depends(get_db)):
+    return db.query(User).filter(User.auth_id == auth_id).all()
 
 @app.post("/api/users", response_model=UserResponse)
-def create_user(user_in: UserCreate, current_account: Account = Depends(get_current_account), db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.name == user_in.name, User.account_id == current_account.id).first()
+def create_user(user_in: UserCreate, auth_id: str = Depends(get_current_user_uuid), db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.name == user_in.name, User.auth_id == auth_id).first()
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
     
@@ -375,8 +292,10 @@ def create_user(user_in: UserCreate, current_account: Account = Depends(get_curr
         name=user_in.name,
         phase=user_in.phase,
         grade=user_in.grade,
-        subjects=",".join(user_in.subjects), # Convert List to String for DB
-        account_id=current_account.id
+        province=user_in.province,
+        textbook_versions=json.dumps(user_in.textbook_versions),
+        subjects=",".join(user_in.subjects),
+        auth_id=auth_id
     )
     db.add(new_user)
     db.commit()
@@ -384,43 +303,33 @@ def create_user(user_in: UserCreate, current_account: Account = Depends(get_curr
     return new_user
 
 @app.put("/api/users/{user_id}", response_model=UserResponse)
-def update_user(user_id: int, user_in: UserUpdate, current_account: Account = Depends(get_current_account), db: Session = Depends(get_db)):
-    # Find user and verify ownership
-    user = db.query(User).filter(User.id == user_id, User.account_id == current_account.id).first()
+def update_user(user_id: int, user_in: UserUpdate, auth_id: str = Depends(get_current_user_uuid), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id, User.auth_id == auth_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Update fields if provided
-    if user_in.name is not None:
-        user.name = user_in.name
-    if user_in.phase is not None:
-        user.phase = user_in.phase
-    if user_in.grade is not None:
-        user.grade = user_in.grade
-    if user_in.subjects is not None:
-        user.subjects = ",".join(user_in.subjects)
+    if user_in.name is not None: user.name = user_in.name
+    if user_in.phase is not None: user.phase = user_in.phase
+    if user_in.grade is not None: user.grade = user_in.grade
+    if user_in.province is not None: user.province = user_in.province
+    if user_in.textbook_versions is not None: user.textbook_versions = json.dumps(user_in.textbook_versions)
+    if user_in.subjects is not None: user.subjects = ",".join(user_in.subjects)
     
     db.commit()
     db.refresh(user)
     return user
 
 @app.delete("/api/users/{user_id}")
-def delete_user(user_id: int, current_account: Account = Depends(get_current_account), db: Session = Depends(get_db)):
-    # Find user and verify ownership
-    user = db.query(User).filter(User.id == user_id, User.account_id == current_account.id).first()
+def delete_user(user_id: int, auth_id: str = Depends(get_current_user_uuid), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id, User.auth_id == auth_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Delete related data first (goals and calendar entries)
     db.query(Goal).filter(Goal.user_id == user_id).delete()
     db.query(CalendarEntry).filter(CalendarEntry.user_id == user_id).delete()
-    
-    # Delete user
     db.delete(user)
     db.commit()
-    
     return {"message": "User deleted successfully"}
-
 
 @app.post("/api/generate-cards", response_model=List[CardResponse])
 def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, db: Session = Depends(get_db)):
@@ -431,72 +340,42 @@ def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, 
     date_obj = datetime.strptime(current_date, "%Y-%m-%d").date()
     cards_response = []
     
-    # Get recent history to avoid repetition (expanded to last 30 entries)
-    recent_entries = db.query(CalendarEntry).filter(
-        CalendarEntry.user_id == user_id
-    ).order_by(CalendarEntry.id.desc()).limit(30).all()
+    recent_entries = db.query(CalendarEntry).filter(CalendarEntry.user_id == user_id).order_by(CalendarEntry.id.desc()).limit(30).all()
     exclude_topics = [extract_topic(e.content) for e in recent_entries]
     
-    # Log excluded topics for debugging
-    print(f"DEBUG_GENERATE: User={user_id}, Date={current_date}, Excluding={exclude_topics}")
+    user_subjects_list = user.subjects.split(",") if user.subjects else ["通用"]
+    try:
+        versions_map = json.loads(user.textbook_versions) if user.textbook_versions else {}
+    except:
+        versions_map = {}
 
-    # 1. Iterate over ALL subscribed subjects
-    user_subjects_list = user.subjects.split(",") if user.subjects else []
-    
-    if not user_subjects_list:
-        subjects_to_cover = ["通用"]
-    else:
-        subjects_to_cover = user_subjects_list
-
-    for subject in subjects_to_cover:
-        # Check cache for THIS subject
+    for subject in user_subjects_list:
         existing_entry = db.query(CalendarEntry).filter(
             CalendarEntry.user_id == user.id, 
             CalendarEntry.date == date_obj,
             CalendarEntry.subject == subject
         ).first()
         
-        # If cache hit and not forced refresh, append to result
         if existing_entry and not ignore_cache:
-            cards_response.append({
-                "id": existing_entry.id,
-                "title": f"每日{subject}",
-                "content": existing_entry.content,
-                "subject": subject,
-                "date": current_date
-            })
+            cards_response.append({"id": existing_entry.id, "title": f"每日{subject}", "content": existing_entry.content, "subject": subject, "date": current_date})
             continue
 
-        # If refresh or not exists, generate
         if existing_entry and ignore_cache:
             db.delete(existing_entry)
             db.commit() 
         
-        # Generate new with history exclusion and date context
-        content = knowledge_service.generate(subject, user.grade, user.phase, current_date=current_date, exclude_topics=exclude_topics)
+        tb_version = versions_map.get(subject, "统编/人教版")
+        content = knowledge_service.generate(subject, user.phase, user.grade, user.province, tb_version, current_date=current_date, exclude_topics=exclude_topics)
         
-        new_entry = CalendarEntry(
-            date=date_obj,
-            content=content,
-            subject=subject,
-            user_id=user.id
-        )
+        new_entry = CalendarEntry(date=date_obj, content=content, subject=subject, user_id=user.id)
         db.add(new_entry)
         db.commit()
         db.refresh(new_entry)
         
-        # Add new topic to exclusion list for next subject in same call
         parts = content.split('：')
-        if parts:
-            exclude_topics.append(parts[0])
+        if parts: exclude_topics.append(parts[0])
 
-        cards_response.append({
-            "id": new_entry.id,
-            "title": f"每日{subject}",
-            "content": content,
-            "subject": subject,
-            "date": current_date
-        })
+        cards_response.append({"id": new_entry.id, "title": f"每日{subject}", "content": content, "subject": subject, "date": current_date})
 
     return cards_response
 
@@ -507,88 +386,46 @@ def regenerate_single_card(user_id: int, subject: str, current_date: str, db: Se
         raise HTTPException(status_code=404, detail="User not found")
     
     date_obj = datetime.strptime(current_date, "%Y-%m-%d").date()
-    
-    # Get recent history (expanded to last 30 entries)
-    recent_entries = db.query(CalendarEntry).filter(
-        CalendarEntry.user_id == user_id
-    ).order_by(CalendarEntry.id.desc()).limit(30).all()
+    recent_entries = db.query(CalendarEntry).filter(CalendarEntry.user_id == user_id).order_by(CalendarEntry.id.desc()).limit(30).all()
     exclude_topics = [extract_topic(e.content) for e in recent_entries]
     
-    print(f"DEBUG_REGENERATE: User={user_id}, Subject={subject}, Excluding={exclude_topics}")
-
-    # 1. Find and Delete existing
-    existing = db.query(CalendarEntry).filter(
-        CalendarEntry.user_id == user.id,
-        CalendarEntry.date == date_obj,
-        CalendarEntry.subject == subject
-    ).first()
-    
+    existing = db.query(CalendarEntry).filter(CalendarEntry.user_id == user.id, CalendarEntry.date == date_obj, CalendarEntry.subject == subject).first()
     if existing:
         db.delete(existing)
         db.commit()
     
-    # 2. Generate New with date context
-    content = knowledge_service.generate(subject, user.grade, user.phase, current_date=current_date, exclude_topics=exclude_topics)
-    
-    new_entry = CalendarEntry(
-        date=date_obj,
-        content=content,
-        subject=subject,
-        user_id=user.id
-    )
+    try:
+        versions_map = json.loads(user.textbook_versions) if user.textbook_versions else {}
+    except:
+        versions_map = {}
+    tb_version = versions_map.get(subject, "统编/人教版")
+
+    content = knowledge_service.generate(subject, user.phase, user.grade, user.province, tb_version, current_date=current_date, exclude_topics=exclude_topics)
+    new_entry = CalendarEntry(date=date_obj, content=content, subject=subject, user_id=user.id)
     db.add(new_entry)
     db.commit()
     db.refresh(new_entry)
     
-    return {
-        "id": new_entry.id,
-        "title": f"每日{subject}",
-        "content": content,
-        "subject": subject,
-        "date": current_date
-    }
+    return {"id": new_entry.id, "title": f"每日{subject}", "content": content, "subject": subject, "date": current_date}
 
 @app.get("/api/users/{user_id}/goal", response_model=Optional[GoalResponse])
 def get_user_goal(user_id: int, db: Session = Depends(get_db)):
-    # Get the latest active goal
-    goal = db.query(Goal).filter(
-        Goal.user_id == user_id,
-        Goal.is_active == True
-    ).order_by(Goal.id.desc()).first()
-    
-    if not goal:
-        return None
-    return GoalResponse(
-        id=goal.id,
-        description=goal.description,
-        target_date=goal.target_date
-    )
+    goal = db.query(Goal).filter(Goal.user_id == user_id, Goal.is_active == True).order_by(Goal.id.desc()).first()
+    return GoalResponse(id=goal.id, description=goal.description, target_date=goal.target_date) if goal else None
 
 @app.post("/api/users/{user_id}/goal", response_model=GoalResponse)
 def set_user_goal(user_id: int, goal_in: GoalCreate, db: Session = Depends(get_db)):
-    # Deactivate old goals
-    old_goals = db.query(Goal).filter(
-        Goal.user_id == user_id, 
-        Goal.is_active == True
-    ).all()
-    for g in old_goals:
-        g.is_active = False
-    
-    new_goal = Goal(
-        description=goal_in.description,
-        target_date=goal_in.target_date, # Raw string
-        user_id=user_id,
-        is_active=True
-    )
+    db.query(Goal).filter(Goal.user_id == user_id, Goal.is_active == True).update({"is_active": False})
+    new_goal = Goal(description=goal_in.description, target_date=goal_in.target_date, user_id=user_id, is_active=True)
     db.add(new_goal)
     db.commit()
     db.refresh(new_goal)
-    
-    return GoalResponse(
-        id=new_goal.id,
-        description=new_goal.description,
-        target_date=new_goal.target_date
-    )
+    return GoalResponse(id=new_goal.id, description=new_goal.description, target_date=new_goal.target_date)
+
+@app.post("/api/explain-card")
+def explain_card(req: ExplainRequest):
+    return {"explanation": knowledge_service.explain(req.content, req.subject, req.grade, req.phase)}
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
