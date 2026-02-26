@@ -67,7 +67,7 @@ export function UserSetupForm({ onComplete }: { onComplete: () => void }) {
         setLoading(true);
         try {
             const token = getToken();
-            const res = await fetch("/api/users", {
+            const res = await fetch("/eduflow/api/users", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

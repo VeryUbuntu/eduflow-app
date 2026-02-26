@@ -265,7 +265,7 @@ export default function Home() {
     setExplainDialogOpen(true);
 
     try {
-      const res = await fetch("/api/explain-card", {
+      const res = await fetch("/eduflow/api/explain-card", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -302,7 +302,7 @@ export default function Home() {
     }
 
     try {
-      const res = await fetch("/api/users", {
+      const res = await fetch("/eduflow/api/users", {
         headers: { "Authorization": `Bearer ${token}` }
       });
 
@@ -333,7 +333,7 @@ export default function Home() {
     setCardLoading(true);
     try {
       const today = format(new Date(), "yyyy-MM-dd");
-      const res = await fetch(`/api/generate-cards?user_id=${currentUser.id}&current_date=${today}`, {
+      const res = await fetch(`/eduflow/api/generate-cards?user_id=${currentUser.id}&current_date=${today}`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${getToken()}` }
       });
@@ -349,7 +349,7 @@ export default function Home() {
   const fetchUserGoal = async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/users/${currentUser.id}/goal`, {
+      const res = await fetch(`/eduflow/api/users/${currentUser.id}/goal`, {
         headers: { "Authorization": `Bearer ${getToken()}` }
       });
       if (res.ok) {
@@ -369,7 +369,7 @@ export default function Home() {
   const handleSaveGoal = async () => {
     if (!currentUser || !goalForm.description || !goalForm.target_date) return;
     try {
-      const res = await fetch(`/api/users/${currentUser.id}/goal`, {
+      const res = await fetch(`/eduflow/api/users/${currentUser.id}/goal`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -389,7 +389,7 @@ export default function Home() {
     if (!currentUser) return;
     try {
       const today = format(new Date(), "yyyy-MM-dd");
-      const res = await fetch(`/api/regenerate-card?user_id=${currentUser.id}&subject=${subject}&current_date=${today}`, {
+      const res = await fetch(`/eduflow/api/regenerate-card?user_id=${currentUser.id}&subject=${subject}&current_date=${today}`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${getToken()}` }
       });
@@ -477,7 +477,7 @@ export default function Home() {
     if (!editingUser || !editForm.name || !editForm.grade) return;
 
     try {
-      const res = await fetch(`/api/users/${editingUser.id}`, {
+      const res = await fetch(`/eduflow/api/users/${editingUser.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -506,7 +506,7 @@ export default function Home() {
 
     setIsDeletingUser(true);
     try {
-      const res = await fetch(`/api/users/${user.id}`, {
+      const res = await fetch(`/eduflow/api/users/${user.id}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${getToken()}`
