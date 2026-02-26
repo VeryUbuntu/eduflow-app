@@ -23,7 +23,7 @@ export const getToken = () => {
         }
     }
 
-    // Checking cookies assuming sxu.com sets 'sb-access-token' or similar
+    // Checking cookies assuming.192.168.0.106 sets 'sb-access-token' or similar
     const match = document.cookie.match(new RegExp('(^| )sb-access-token=([^;]+)')) ||
         document.cookie.match(new RegExp('(^| )sxu_auth_token=([^;]+)'));
     if (match) return decodeURIComponent(match[2]);
