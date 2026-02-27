@@ -11,6 +11,9 @@ class User(Base):
     province = Column(String, default="通用")
     phase = Column(String)
     grade = Column(String)
+    semester = Column(String, default="下学期")
+    month = Column(String, default="第1个月")
+    learning_units = Column(String) # Stored as JSON string
     textbook_versions = Column(String) # Stored as JSON string
     subjects = Column(String) # Stored as comma-separated string
 

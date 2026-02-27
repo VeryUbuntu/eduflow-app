@@ -26,11 +26,11 @@ export function UserSetupForm({ onComplete }: { onComplete: () => void }) {
 
     const PHASES = ["小学", "初中", "高中"];
     const PROVINCES = ["北京", "上海", "天津", "重庆", "河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南", "广东", "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "台湾", "内蒙古", "广西", "西藏", "宁夏", "新疆"];
-    const SUBJECTS = [
-        "语文", "数学", "英语",
-        "物理", "化学", "生物",
-        "历史", "地理", "道德与法治"
-    ];
+
+    // Compute dynamic subjects based on the selected phase
+    const availableSubjects = phase === "小学"
+        ? ["语文", "数学", "英语", "科学", "编程基础", "综合"]
+        : ["语文", "数学", "英语", "物理", "化学", "生物", "历史", "地理", "道德与法治", "综合", "AI"];
 
     const SUBJECT_VERSIONS: Record<string, string[]> = {
         "语文": ["统编版-人民教育出版社"],
@@ -42,6 +42,7 @@ export function UserSetupForm({ onComplete }: { onComplete: () => void }) {
         "历史": ["统编版-人民教育出版社"],
         "地理": ["人教版-人民教育出版社", "中图版-中国地图出版社", "商务星图版-商务星球地图出版社", "晋教版-山西教育出版社", "湘教版-湖南教育出版社", "科普版-科学普及出版社", "粤教粤人版-广东教育广东人民"],
         "道德与法治": ["统编版-人民教育出版社"],
+        "科学": ["教科版-教育科学出版社", "苏教版-江苏教育出版社", "冀教版-河北教育出版社"],
         "通用": ["通用版"]
     };
 
@@ -167,7 +168,7 @@ export function UserSetupForm({ onComplete }: { onComplete: () => void }) {
                             <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-md">多选</span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {SUBJECTS.map(s => (
+                            {availableSubjects.map(s => (
                                 <div key={s} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-cyan-200 hover:bg-cyan-50/30 transition-colors group">
                                     <div className="flex items-center space-x-3">
                                         <Checkbox

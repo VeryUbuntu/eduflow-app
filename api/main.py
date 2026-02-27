@@ -14,7 +14,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from jose import jwt, JWTError
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 # We only need SUPABASE_JWT_SECRET now for verification
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "this-is-a-placeholder-for-dev-only-should-be-long-enough")
@@ -32,6 +32,9 @@ class User(Base):
     province = Column(String, default="通用")
     phase = Column(String)
     grade = Column(String)
+    semester = Column(String, default="全学年")
+    month = Column(String, default="第1个月")
+    learning_units = Column(String) # Stored as JSON string
     textbook_versions = Column(String) # Stored as JSON string
     subjects = Column(String) # Stored as comma-separated string
 
@@ -101,17 +104,23 @@ class UserCreate(BaseModel):
     name: str 
     phase: str 
     grade: str 
+    semester: str = "全学年"
+    month: str = "第1个月"
     province: str = "通用"
     textbook_versions: Dict[str, str] = {}
     subjects: List[str] 
+    learning_units: Dict[str, List[str]] = {}
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     phase: Optional[str] = None
     grade: Optional[str] = None
+    semester: Optional[str] = None
+    month: Optional[str] = None
     province: Optional[str] = None
     textbook_versions: Optional[Dict[str, str]] = None
     subjects: Optional[List[str]] = None
+    learning_units: Optional[Dict[str, List[str]]] = None
 
 class UserResponse(BaseModel):
     id: int
@@ -119,8 +128,11 @@ class UserResponse(BaseModel):
     name: str
     phase: str
     grade: str
+    semester: str
+    month: str
     province: str
     textbook_versions: Dict[str, str]
+    learning_units: Dict[str, List[str]]
     subjects: List[str]
     
     class Config:
@@ -136,6 +148,16 @@ class UserResponse(BaseModel):
     @field_validator('textbook_versions', mode='before')
     @classmethod
     def parse_textbooks(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except:
+                return {}
+        return v or {}
+
+    @field_validator('learning_units', mode='before')
+    @classmethod
+    def parse_units(cls, v):
         if isinstance(v, str):
             try:
                 return json.loads(v)
@@ -168,6 +190,13 @@ class ExplainRequest(BaseModel):
     subject: str
     grade: str = "通用"
     phase: str = "通用"
+
+class SyllabusRequest(BaseModel):
+    phase: str
+    grade: str
+    subject: str
+    version: str
+    semester: str
 
 # Knowledge Service
 def extract_topic(content: str) -> str:
@@ -207,15 +236,55 @@ class KnowledgeService:
         self.base_url = os.getenv("LLM_BASE_URL", "https://api.siliconflow.cn/v1")
         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url) if self.api_key else None
 
-    def generate(self, subject: str, phase: str, grade: str, province: str, textbook_version: str, current_date: str = None, exclude_topics: List[str] = None):
+    def get_syllabus_units(self, subject: str, phase: str, grade: str, version: str, semester: str) -> List[str]:
+        if not self.client:
+            return ["智能助手未配置，无法生成单元列表。"]
+        try:
+            if subject in ["编程基础", "综合", "AI"]:
+                prompt = (
+                    f"作为课程设计专家，请为【{phase}】【{grade}】的【{subject}】课程设计一个标准的教学大纲。\n"
+                    f"任务：列出该【{semester}】合理范围内的课本章/单元目录。\n"
+                    f"请严格输出一个 JSON 格式的字符串数组（List of strings），列表中的每一项是该课程的一章或一个单元的名称。\n"
+                    f"请不要输出任何Markdown格式标注、不要多余解释，唯一输出结果必须是可以被直接 `json.loads` 解析的合法 JSON 数组。"
+                )
+            else:
+                prompt = (
+                    f"请作为教材目录检索专家，基于开源的 'TapXWorld/ChinaTextbook' 中国小初高大教材数据库信息进行梳理。\n"
+                    f"任务：列出【{phase}】【{grade}】【{semester}】使用的【{subject}】【{version}】的课本章/单元目录。\n"
+                    f"请严格输出一个 JSON 格式的字符串数组（List of strings），列表中的每一项是该教材的一章或一个单元的名称（如：'第一章 有理数', '第二章 整式的加减'）。\n"
+                    f"请不要输出任何Markdown格式标注、不要多余解释，唯一输出结果必须是可以被直接 `json.loads` 解析的合法 JSON 数组。"
+                )
+            response = self.client.chat.completions.create(
+                model="Qwen/Qwen2.5-72B-Instruct",
+                messages=[{"role": "user", "content": prompt}],
+                timeout=30,
+                temperature=0.2
+            )
+            text = response.choices[0].message.content.strip()
+            match = re.search(r'\[.*\]', text, re.DOTALL)
+            if match:
+                units = json.loads(match.group(0))
+                if isinstance(units, list):
+                    return [str(u) for u in units]
+            return ["未获取到单元列表。"]
+        except Exception as e:
+            print(f"LLM Failed: {e}")
+            return ["获取目录出错，请稍后重试。"]
+
+    def generate(self, subject: str, phase: str, grade: str, province: str, textbook_version: str, semester: str = "", month: str = "", learning_units: List[str] = None, current_date: str = None, exclude_topics: List[str] = None):
         if self.client:
-            progress = get_semester_progress(current_date or datetime.now().strftime("%Y-%m-%d"))
+            if semester and month:
+                progress = f"【{semester}】【{month}】"
+            else:
+                progress = get_semester_progress(current_date or datetime.now().strftime("%Y-%m-%d"))
             
             # Step 1: "Search" TapXWorld/ChinaTextbook for the Syllabus Chapter
             search_prompt = f"请作为教材目录检索系统，在开源的 'TapXWorld/ChinaTextbook' 中国小初高大学教材数据库中进行检索。\n"
             search_prompt += f"任务：查找【{province}】地区【{phase}{grade}】使用的【{subject}】【{textbook_version}】的课本大纲。\n"
             search_prompt += f"结合当前的教学进度节点：【{progress}】（当前系统日期：{current_date}）。\n"
-            search_prompt += f"请直接输出当前进度下，该学生最有可能正在学习的具体【单元名称】或【小节标题】内容。只要标题信息即可，不要做过多解释。（例如：第三章 动量守恒定理，第一节 动量）。\n"
+            if learning_units and len(learning_units) > 0:
+                search_prompt += f"用户已经指定了当前正在学习的单元内容范围：{', '.join(learning_units)}。请在这个范围内选择。\n"
+            search_prompt += f"请直接输出当前进度下，该学生最有可能正在学习的具体【重点知识点】内容。只要标题信息即可，不要做过多解释。（例如：第三章 动量守恒定理，第一节 动量）。\n"
             if exclude_topics:
                 display_exclude = exclude_topics[:20] 
                 search_prompt += f"\n关键过滤规则：绝对不要生成这些已经学过的周边知识点：{', '.join(display_exclude)}。如果不确定，请挑选一个比较新的后续章节。"
@@ -236,7 +305,11 @@ class KnowledgeService:
                     generate_user = f"经 'TapXWorld/ChinaTextbook' 教材库大纲匹配，该生今天应学习的教材进度对应章节是：【{chapter_target}】（科目：{subject}，版本：{textbook_version}）。\n"
                     generate_user += "请提取该小节中的一个重点，生成一张今天的知识卡片。\n"
                     generate_user += "要求包含：核心概念讲解、一个典型例题（如果适用）、和简要解析。\n"
-                    generate_user += "格式要求：必须以 '概念概要名称：...' 开头。总体字数控制在 80-120 字左右。\n"
+                    generate_user += "格式与排版要求：\n"
+                    generate_user += "1. 必须以 '概念概要名称：...' 开头。\n"
+                    generate_user += "2. 总体字数控制在 150-250 字左右。\n"
+                    generate_user += "3. 所有涉及到的数学/科学符号、公式，请【严格】使用 LaTeX 语法，内联公式用 `$` 包裹，独立段落公式用 `$$` 包裹。\n"
+                    generate_user += "4. 为了美观易读，请将段落内的小结标题（如“**核心概念**”、“**典型例题**”、“**解析**”）进行 Markdown 加粗。"
                     
                     card_response = self.client.chat.completions.create(
                         model="Qwen/Qwen2.5-72B-Instruct", 
@@ -292,8 +365,11 @@ def create_user(user_in: UserCreate, auth_id: str = Depends(get_current_user_uui
         name=user_in.name,
         phase=user_in.phase,
         grade=user_in.grade,
+        semester=user_in.semester,
+        month=user_in.month,
         province=user_in.province,
         textbook_versions=json.dumps(user_in.textbook_versions),
+        learning_units=json.dumps(user_in.learning_units),
         subjects=",".join(user_in.subjects),
         auth_id=auth_id
     )
@@ -311,8 +387,11 @@ def update_user(user_id: int, user_in: UserUpdate, auth_id: str = Depends(get_cu
     if user_in.name is not None: user.name = user_in.name
     if user_in.phase is not None: user.phase = user_in.phase
     if user_in.grade is not None: user.grade = user_in.grade
+    if user_in.semester is not None: user.semester = user_in.semester
+    if user_in.month is not None: user.month = user_in.month
     if user_in.province is not None: user.province = user_in.province
     if user_in.textbook_versions is not None: user.textbook_versions = json.dumps(user_in.textbook_versions)
+    if user_in.learning_units is not None: user.learning_units = json.dumps(user_in.learning_units)
     if user_in.subjects is not None: user.subjects = ",".join(user_in.subjects)
     
     db.commit()
@@ -365,7 +444,13 @@ def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, 
             db.commit() 
         
         tb_version = versions_map.get(subject, "统编/人教版")
-        content = knowledge_service.generate(subject, user.phase, user.grade, user.province, tb_version, current_date=current_date, exclude_topics=exclude_topics)
+        try:
+            units_map = json.loads(user.learning_units) if user.learning_units else {}
+        except:
+            units_map = {}
+        target_units = units_map.get(subject, [])
+
+        content = knowledge_service.generate(subject, user.phase, user.grade, user.province, tb_version, semester=user.semester, month=user.month, learning_units=target_units, current_date=current_date, exclude_topics=exclude_topics)
         
         new_entry = CalendarEntry(date=date_obj, content=content, subject=subject, user_id=user.id)
         db.add(new_entry)
@@ -400,7 +485,13 @@ def regenerate_single_card(user_id: int, subject: str, current_date: str, db: Se
         versions_map = {}
     tb_version = versions_map.get(subject, "统编/人教版")
 
-    content = knowledge_service.generate(subject, user.phase, user.grade, user.province, tb_version, current_date=current_date, exclude_topics=exclude_topics)
+    try:
+        units_map = json.loads(user.learning_units) if user.learning_units else {}
+    except:
+        units_map = {}
+    target_units = units_map.get(subject, [])
+
+    content = knowledge_service.generate(subject, user.phase, user.grade, user.province, tb_version, semester=user.semester, month=user.month, learning_units=target_units, current_date=current_date, exclude_topics=exclude_topics)
     new_entry = CalendarEntry(date=date_obj, content=content, subject=subject, user_id=user.id)
     db.add(new_entry)
     db.commit()
@@ -425,6 +516,10 @@ def set_user_goal(user_id: int, goal_in: GoalCreate, db: Session = Depends(get_d
 @app.post("/api/explain-card")
 def explain_card(req: ExplainRequest):
     return {"explanation": knowledge_service.explain(req.content, req.subject, req.grade, req.phase)}
+
+@app.post("/api/syllabus", response_model=List[str])
+def get_syllabus(req: SyllabusRequest, auth_id: str = Depends(get_current_user_uuid)):
+    return knowledge_service.get_syllabus_units(req.subject, req.phase, req.grade, req.version, req.semester)
 
 if __name__ == "__main__":
     import uvicorn

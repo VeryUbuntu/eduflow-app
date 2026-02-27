@@ -14,7 +14,7 @@ import { format, differenceInCalendarDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { useRouter } from "next/navigation";
 import { getToken, removeToken, setDevToken } from "@/lib/auth";
-import { Loader2, Plus, RefreshCcw, Pencil, Target, BookOpen, LogOut, UserCircle, Trash2 } from "lucide-react";
+import { Loader2, Plus, RefreshCcw, Pencil, Target, BookOpen, LogOut, UserCircle, Trash2, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -51,8 +51,11 @@ type User = {
   name: string;
   phase: string;
   grade: string;
+  semester: string;
+  month: string;
   province: string;
   textbook_versions: Record<string, string>;
+  learning_units: Record<string, string[]>;
   subjects: string[];
 };
 
@@ -71,9 +74,15 @@ type CardData = {
 };
 
 const PHASES = ["小学", "初中", "高中"];
+const SEMESTERS = ["上学期", "下学期", "全学年"];
+const MONTHS = ["第1个月", "第2个月", "第3个月", "第4个月", "第5个月", "第6个月"];
 const PROVINCES = ["北京", "上海", "天津", "重庆", "河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南", "广东", "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "台湾", "内蒙古", "广西", "西藏", "宁夏", "新疆"];
-const SUBJECTS_LIST = ["语文", "数学", "英语", "物理", "化学", "生物", "历史", "地理", "道德与法治"];
 
+const getAvailableSubjects = (phase: string) => {
+  return phase === "小学"
+    ? ["语文", "数学", "英语", "科学", "编程基础", "综合"]
+    : ["语文", "数学", "英语", "物理", "化学", "生物", "历史", "地理", "道德与法治", "综合", "AI"];
+};
 const SUBJECT_VERSIONS: Record<string, string[]> = {
   "语文": ["统编版-人民教育出版社"],
   "数学": ["人教版-人民教育出版社", "冀教版-河北教育出版社", "北京版-北京出版社", "北师大版-北京师范大学出版社", "华东师大版-华东师范大学出版社", "沪科技版-上海科学技术出版社", "浙教版-浙江教育出版社", "湘教版-湖南教育出版社", "苏科版-江苏凤凰科学技术出版社", "青岛版-青岛出版社"],
@@ -84,6 +93,7 @@ const SUBJECT_VERSIONS: Record<string, string[]> = {
   "历史": ["统编版-人民教育出版社"],
   "地理": ["人教版-人民教育出版社", "中图版-中国地图出版社", "商务星图版-商务星球地图出版社", "晋教版-山西教育出版社", "湘教版-湖南教育出版社", "科普版-科学普及出版社", "粤教粤人版-广东教育广东人民"],
   "道德与法治": ["统编版-人民教育出版社"],
+  "科学": ["教科版-教育科学出版社", "苏教版-江苏教育出版社", "冀教版-河北教育出版社"],
   "通用": ["通用版"]
 };
 
@@ -98,6 +108,11 @@ const SUBJECT_COLORS: Record<string, string> = {
   "生物": "bg-green-100 border-green-200 text-green-900",
   "历史": "bg-amber-100 border-amber-200 text-amber-900",
   "地理": "bg-cyan-100 border-cyan-200 text-cyan-900",
+  "道德与法治": "bg-rose-100 border-rose-200 text-rose-900",
+  "科学": "bg-teal-100 border-teal-200 text-teal-900",
+  "综合": "bg-orange-100 border-orange-200 text-orange-900",
+  "编程基础": "bg-slate-100 border-slate-300 text-slate-800",
+  "AI": "bg-indigo-100 border-indigo-300 text-indigo-800",
   "通用": "bg-gray-100 border-gray-200 text-gray-900",
 };
 
@@ -110,6 +125,11 @@ const SUBJECT_BADGE_COLORS: Record<string, string> = {
   "生物": "bg-green-500 shadow-green-200",
   "历史": "bg-amber-500 shadow-amber-200",
   "地理": "bg-cyan-500 shadow-cyan-200",
+  "道德与法治": "bg-rose-500 shadow-rose-200",
+  "科学": "bg-teal-500 shadow-teal-200",
+  "综合": "bg-orange-500 shadow-orange-200",
+  "编程基础": "bg-slate-600 shadow-slate-300",
+  "AI": "bg-indigo-600 shadow-indigo-300",
   "通用": "bg-gray-500 shadow-gray-200",
 };
 
@@ -185,18 +205,19 @@ function SortableCard({ card, onRefresh, onExplain }: { card: CardData, onRefres
         </div>
 
         {/* Content */}
-        <div className="flex-1 flex flex-col justify-center items-start text-left py-4 px-1 cursor-grab active:cursor-grabbing">
-          <h3 className="text-lg font-semibold text-slate-900 mb-3 leading-snug w-full">
-            {(() => {
-              const parts = card.content.split(/[:：]/);
-              return parts.length > 0 ? parts[0] : "";
-            })()}
-          </h3>
-          <div className="text-[15px] text-slate-600 leading-relaxed font-normal w-full whitespace-pre-line hyphens-auto">
-            {(() => {
-              const parts = card.content.split(/[:：]/);
-              return parts.length > 1 ? parts.slice(1).join("：") : card.content;
-            })()}
+        <div className="flex-1 flex flex-col justify-center items-start text-left py-4 px-1 cursor-grab active:cursor-grabbing w-full">
+          <div className="w-full prose prose-sm prose-slate max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={{
+                h3: ({ node, ...props }) => <h3 className="text-lg font-bold text-slate-900 mb-3 leading-snug w-full" {...props} />,
+                strong: ({ node, ...props }) => <strong className="font-bold text-slate-800" {...props} />,
+                p: ({ node, ...props }) => <p className="text-[15px] text-slate-600 leading-relaxed font-normal w-full whitespace-pre-line hyphens-auto mt-2" {...props} />
+              }}
+            >
+              {card.content.replace(/概念概要名称：(.*?)(?:\n|$)/, '### $1\n')}
+            </ReactMarkdown>
           </div>
         </div>
 
@@ -242,6 +263,16 @@ export default function Home() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", phase: "", grade: "", province: "", textbook_versions: {} as Record<string, string>, subjects: [] as string[] });
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  // Progress Control Center State
+  const [isProgressDialogOpen, setIsProgressDialogOpen] = useState(false);
+  const [progressForm, setProgressForm] = useState({
+    semester: "下学期",
+    month: "第1个月",
+    learning_units: {} as Record<string, string[]>
+  });
+  const [progressSyllabusLoading, setProgressSyllabusLoading] = useState<Record<string, boolean>>({});
+  const [progressSyllabusOptions, setProgressSyllabusOptions] = useState<Record<string, string[]>>({});
 
   const [snowEnabled, setSnowEnabled] = useState(false);
 
@@ -328,12 +359,13 @@ export default function Home() {
     }
   };
 
-  const fetchDailyCards = async () => {
+  const fetchDailyCards = async (ignoreCache: boolean = false) => {
     if (!currentUser) return;
     setCardLoading(true);
     try {
       const today = format(new Date(), "yyyy-MM-dd");
-      const res = await fetch(`/eduflow/api/generate-cards?user_id=${currentUser.id}&current_date=${today}`, {
+      const url = `/eduflow/api/generate-cards?user_id=${currentUser.id}&current_date=${today}${ignoreCache ? '&ignore_cache=true' : ''}`;
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Authorization": `Bearer ${getToken()}` }
       });
@@ -450,6 +482,58 @@ export default function Home() {
     setIsEditDialogOpen(true);
   };
 
+  const handleProgressSettings = () => {
+    if (!currentUser) return;
+    setProgressForm({
+      semester: currentUser.semester || "下学期",
+      month: currentUser.month || "第1个月",
+      learning_units: currentUser.learning_units ? { ...currentUser.learning_units } : {}
+    });
+    // Optional: Auto fetch syllabus? We leave it manual for now
+    setProgressSyllabusOptions({});
+    setIsProgressDialogOpen(true);
+  };
+
+  const fetchSyllabusForProgress = async (subject: string) => {
+    if (!currentUser || !currentUser.grade || !currentUser.phase) return;
+    setProgressSyllabusLoading(prev => ({ ...prev, [subject]: true }));
+    try {
+      const token = getToken();
+      // Fallback to general generic if not set
+      const version = currentUser.textbook_versions?.[subject] || (SUBJECT_VERSIONS[subject] ? SUBJECT_VERSIONS[subject][0] : "通用版");
+      const res = await fetch("/eduflow/api/syllabus", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          phase: currentUser.phase,
+          grade: currentUser.grade,
+          semester: progressForm.semester,
+          subject,
+          version
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProgressSyllabusOptions(prev => ({ ...prev, [subject]: data }));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setProgressSyllabusLoading(prev => ({ ...prev, [subject]: false }));
+    }
+  };
+
+  const toggleProgressUnit = (subject: string, unit: string) => {
+    setProgressForm(prev => {
+      const list = prev.learning_units[subject] || [];
+      const newUnits = list.includes(unit) ? list.filter(u => u !== unit) : [...list, unit];
+      return { ...prev, learning_units: { ...prev.learning_units, [subject]: newUnits } };
+    });
+  };
+
   const handleEditToggleSubject = (subject: string) => {
     if (editForm.subjects.includes(subject)) {
       setEditForm(prev => {
@@ -483,7 +567,14 @@ export default function Home() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${getToken()}`
         },
-        body: JSON.stringify(editForm)
+        body: JSON.stringify({
+          name: editForm.name,
+          phase: editForm.phase,
+          grade: editForm.grade,
+          province: editForm.province,
+          subjects: editForm.subjects,
+          textbook_versions: editForm.textbook_versions
+        })
       });
 
       if (res.ok) {
@@ -496,6 +587,35 @@ export default function Home() {
       }
     } catch (e) {
       console.error("Failed to update user", e);
+    }
+  };
+
+  const handleSaveProgress = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(`/eduflow/api/users/${currentUser.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({
+          semester: progressForm.semester,
+          month: progressForm.month,
+          learning_units: progressForm.learning_units
+        })
+      });
+
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
+        setCurrentUser(updatedUser);
+        setIsProgressDialogOpen(false);
+        // Refresh cards, ignoring cache so new units are used today.
+        fetchDailyCards(true);
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -729,8 +849,30 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Right Column: Goal Countdown Section (Vertically Centered) */}
-            <div className="flex items-center flex-none">
+            {/* Right Column: Goal and Progress Section (Vertically Centered) */}
+            <div className="flex items-center flex-none gap-3">
+              <div
+                onClick={handleProgressSettings}
+                className="flex items-center gap-4 bg-white border border-slate-100 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.05)] rounded-2xl px-5 py-3 hover:border-indigo-200 hover:shadow-indigo-50 transition-all cursor-pointer group select-none hidden sm:flex"
+              >
+                {/* Icon */}
+                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-100 group-hover:scale-110 transition-all duration-300">
+                  <Settings size={20} className="stroke-[2.5px]" />
+                </div>
+
+                {/* Info */}
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">最近学习进度</span>
+                    <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded shadow-sm">可随时修改</span>
+                  </div>
+                  <div className="flex items-baseline gap-1 mt-0.5">
+                    <span className="text-sm font-extrabold text-indigo-600 tracking-tight leading-none">
+                      {currentUser?.semester || "未设定"} / {currentUser?.month || "未设定"}
+                    </span>
+                  </div>
+                </div>
+              </div>
               {userGoal ? (
                 <div
                   className="flex items-center gap-4 bg-white border border-slate-100 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.05)] rounded-2xl px-5 py-3 hover:border-cyan-200 hover:shadow-cyan-50 transition-all cursor-pointer group select-none"
@@ -858,7 +1000,7 @@ export default function Home() {
                   <Label className="text-slate-700 font-bold text-base">订阅科目及教材版本</Label>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {SUBJECTS_LIST.map(s => (
+                  {getAvailableSubjects(editForm.phase).map(s => (
                     <div key={s} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-cyan-200 hover:bg-cyan-50/30 transition-colors">
                       <div className="flex items-center space-x-3">
                         <input
@@ -897,6 +1039,106 @@ export default function Home() {
                 disabled={!editForm.name || !editForm.grade || editForm.subjects.length === 0}
               >
                 保存档案
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Progress Setting Dialog */}
+        <Dialog open={isProgressDialogOpen} onOpenChange={setIsProgressDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-[#fafafa]">
+            <DialogHeader>
+              <DialogTitle className="text-indigo-900 font-bold text-xl flex items-center gap-2">
+                <Settings className="w-6 h-6 text-indigo-500" />
+                阶段学习进度控制中心
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6 py-4">
+              <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-6">
+                <div className="space-y-1.5 flex-1">
+                  <Label className="text-indigo-800 font-bold text-sm">当前学期</Label>
+                  <select
+                    className="w-full h-10 px-3 py-2 rounded-lg border-transparent bg-white text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium shadow-sm"
+                    value={progressForm.semester}
+                    onChange={(e) => setProgressForm({ ...progressForm, semester: e.target.value })}
+                  >
+                    {SEMESTERS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5 flex-1">
+                  <Label className="text-indigo-800 font-bold text-sm">学习月度</Label>
+                  <select
+                    className="w-full h-10 px-3 py-2 rounded-lg border-transparent bg-white text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium shadow-sm"
+                    value={progressForm.month}
+                    onChange={(e) => setProgressForm({ ...progressForm, month: e.target.value })}
+                  >
+                    {MONTHS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex px-1 items-center justify-between">
+                  <Label className="text-slate-800 font-bold text-base">本月度各科冲刺单元目录设定</Label>
+                  <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-1 rounded-md font-semibold">精准生成重点</span>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {currentUser?.subjects.map(s => (
+                    <div key={s} className="p-4 rounded-xl border bg-white border-slate-200/60 shadow-sm transition-all">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-base text-slate-700">{s}</span>
+                          <span className="text-xs text-slate-400">({currentUser.textbook_versions?.[s] || "通用版本"})</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800"
+                          onClick={() => fetchSyllabusForProgress(s)}
+                          disabled={progressSyllabusLoading[s]}
+                        >
+                          {progressSyllabusLoading[s] ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null} 拉取当前学年全部大纲
+                        </Button>
+                      </div>
+
+                      {progressSyllabusOptions[s] && (
+                        <div className="mt-3 max-h-48 overflow-y-auto bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-2">
+                          {progressSyllabusOptions[s].map((unit, idx) => {
+                            const isChecked = (progressForm.learning_units[s] || []).includes(unit);
+                            return (
+                              <div
+                                key={idx}
+                                className={cn(
+                                  "flex items-start space-x-3 p-2 rounded-md transition-colors hover:bg-white cursor-pointer group",
+                                  isChecked ? "bg-white border-indigo-100 shadow-[0_2px_8px_-4px_rgba(99,102,241,0.3)] border" : "border border-transparent"
+                                )}
+                                onClick={() => toggleProgressUnit(s, unit)}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  readOnly
+                                  className="mt-0.5 h-[1.125rem] w-[1.125rem] text-indigo-600 rounded-md border-slate-300 focus:ring-indigo-500 pointer-events-none"
+                                />
+                                <Label className="text-sm text-slate-700 leading-snug cursor-pointer group-hover:text-slate-900 group-active:text-slate-900">{unit}</Label>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {currentUser?.subjects?.length === 0 && (
+                    <p className="text-sm text-slate-400 py-4 text-center">暂未订阅任何科目，请先编辑档案</p>
+                  )}
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" className="text-slate-500" onClick={() => setIsProgressDialogOpen(false)}>取消</Button>
+              <Button onClick={handleSaveProgress} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold ml-2 shadow-md shadow-indigo-200 border-none px-6">
+                应用该进度设置
               </Button>
             </DialogFooter>
           </DialogContent>
