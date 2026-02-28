@@ -23,7 +23,48 @@ export const getToken = () => {
         }
     }
 
-    // Checking cookies assuming.192.168.0.106 sets 'sb-access-token' or similar
+    // Read from cookies: handle chunked Supabase SSR cookies or unchunked
+    const cookieStr = document.cookie || "";
+    const cookiePairs = cookieStr.split(';').map(c => c.trim());
+
+    // First, try to find a complete non-chunked token ending in -auth-token
+    for (const cookie of cookiePairs) {
+        if (/^sb-.*-auth-token=/.test(cookie) && !cookie.includes('-auth-token.')) {
+            try {
+                const val = decodeURIComponent(cookie.split('=')[1]);
+                const parsed = JSON.parse(val);
+                if (parsed.access_token) return parsed.access_token;
+                if (parsed[0]) {
+                    const jsonObj = JSON.parse(parsed[0]);
+                    if (jsonObj.access_token) return jsonObj.access_token;
+                }
+            } catch (e) { }
+        }
+    }
+
+    // Second, try to reassemble chunked tokens (like sb-xxx-auth-token.0, sb-xxx-auth-token.1)
+    const chunks: Record<string, string[]> = {};
+    for (const cookie of cookiePairs) {
+        const match = cookie.match(/^(sb-.*-auth-token)\.(\d+)=(.+)$/);
+        if (match) {
+            const baseName = match[1];
+            const idx = parseInt(match[2]);
+            const val = match[3];
+            if (!chunks[baseName]) chunks[baseName] = [];
+            chunks[baseName][idx] = val;
+        }
+    }
+
+    for (const baseName in chunks) {
+        try {
+            const combined = chunks[baseName].join('');
+            const val = decodeURIComponent(combined);
+            const parsed = JSON.parse(val);
+            if (parsed.access_token) return parsed.access_token;
+        } catch (e) { }
+    }
+
+    // Check old fallback cookies
     const match = document.cookie.match(new RegExp('(^| )sb-access-token=([^;]+)')) ||
         document.cookie.match(new RegExp('(^| )sxu_auth_token=([^;]+)'));
     if (match) return decodeURIComponent(match[2]);
