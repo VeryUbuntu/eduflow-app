@@ -91,7 +91,7 @@ async def get_current_user_uuid(token: str = Depends(oauth2_scheme)):
     
     try:
         # In a real scenario with correct SUPABASE_JWT_SECRET, options={"verify_signature": True}
-        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], options={"verify_signature": False})
+        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], options={"verify_signature": False, "verify_aud": False})
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
