@@ -327,7 +327,7 @@ export default function Home() {
         setDevToken("mock-uuid-development-001");
         token = "mock-uuid-development-001";
       } else {
-        window.location.href = "http://192.168.0.106:3000/login";
+        window.location.href = "/login";
         return;
       }
     }
@@ -340,7 +340,7 @@ export default function Home() {
       if (res.status === 401) {
         if (process.env.NODE_ENV !== "development") {
           removeToken();
-          window.location.href = "http://192.168.0.106:3000/login";
+          window.location.href = "/login";
           return;
         }
       }
