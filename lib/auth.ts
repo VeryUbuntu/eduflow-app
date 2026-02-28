@@ -10,6 +10,21 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export const getToken = () => {
     if (typeof window === "undefined") return null;
 
+    const decodeSupabaseCookieValue = (value: string) => {
+        if (value.startsWith('base64-')) {
+            const b64 = value.slice(7).replace(/-/g, '+').replace(/_/g, '/');
+            try {
+                // b64 to utf8 string
+                return decodeURIComponent(atob(b64).split('').map((c) => {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+            } catch (e) {
+                return atob(b64);
+            }
+        }
+        return value;
+    };
+
     // Check common Supabase tokens in localStorage first (dev scenario)
     for (const key in localStorage) {
         if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
@@ -31,7 +46,8 @@ export const getToken = () => {
     for (const cookie of cookiePairs) {
         if (/^sb-.*-auth-token=/.test(cookie) && !cookie.includes('-auth-token.')) {
             try {
-                const val = decodeURIComponent(cookie.split('=')[1]);
+                let val = decodeURIComponent(cookie.split('=')[1]);
+                val = decodeSupabaseCookieValue(val);
                 const parsed = JSON.parse(val);
                 if (parsed.access_token) return parsed.access_token;
                 if (parsed[0]) {
@@ -58,7 +74,8 @@ export const getToken = () => {
     for (const baseName in chunks) {
         try {
             const combined = chunks[baseName].join('');
-            const val = decodeURIComponent(combined);
+            let val = decodeURIComponent(combined);
+            val = decodeSupabaseCookieValue(val);
             const parsed = JSON.parse(val);
             if (parsed.access_token) return parsed.access_token;
         } catch (e) { }
