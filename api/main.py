@@ -4,6 +4,7 @@ import json
 import re
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
@@ -428,6 +429,7 @@ def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, 
     except:
         versions_map = {}
 
+    cache_entries = {}
     for subject in user_subjects_list:
         existing_entry = db.query(CalendarEntry).filter(
             CalendarEntry.user_id == user.id, 
@@ -449,20 +451,42 @@ def generate_cards(user_id: int, current_date: str, ignore_cache: bool = False, 
         except:
             units_map = {}
         target_units = units_map.get(subject, [])
+        cache_entries[subject] = {"tb_version": tb_version, "target_units": target_units}
 
-        content = knowledge_service.generate(subject, user.phase, user.grade, user.province, tb_version, semester=user.semester, month=user.month, learning_units=target_units, current_date=current_date, exclude_topics=exclude_topics)
-        
-        new_entry = CalendarEntry(date=date_obj, content=content, subject=subject, user_id=user.id)
-        db.add(new_entry)
-        db.commit()
-        db.refresh(new_entry)
-        
-        parts = content.split('：')
-        if parts: exclude_topics.append(parts[0])
+    if cache_entries:
+        results_map = {}
+        def _fetch_content(subj, args, excl_topics):
+            content = knowledge_service.generate(subj, user.phase, user.grade, user.province, args["tb_version"], semester=user.semester, month=user.month, learning_units=args["target_units"], current_date=current_date, exclude_topics=excl_topics)
+            return subj, content
+            
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(_fetch_content, subj, args, list(exclude_topics)) for subj, args in cache_entries.items()]
+            for future in as_completed(futures):
+                s, content = future.result()
+                results_map[s] = content
 
-        cards_response.append({"id": new_entry.id, "title": f"每日{subject}", "content": content, "subject": subject, "date": current_date})
+        for subject in user_subjects_list:
+            if subject in results_map:
+                content = results_map[subject]
+                new_entry = CalendarEntry(date=date_obj, content=content, subject=subject, user_id=user.id)
+                db.add(new_entry)
+                db.commit()
+                db.refresh(new_entry)
+                
+                parts = content.split('：')
+                if parts: exclude_topics.append(parts[0])
 
-    return cards_response
+                cards_response.append({"id": new_entry.id, "title": f"每日{subject}", "content": content, "subject": subject, "date": current_date})
+
+    # Keep original subject order
+    ordered_cards = []
+    for subject in user_subjects_list:
+        for card in cards_response:
+            if card["subject"] == subject:
+                ordered_cards.append(card)
+                break
+
+    return ordered_cards
 
 @app.post("/api/regenerate-card", response_model=CardResponse)
 def regenerate_single_card(user_id: int, subject: str, current_date: str, db: Session = Depends(get_db)):
